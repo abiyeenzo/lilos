@@ -1,0 +1,49 @@
+name: Build OS ISO
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Installer les dépendances
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nasm gcc-multilib qemu-system-x86-misc
+
+      - name: Compiler l'OS
+        run: |
+          # Commande pour assembler le bootloader
+          nasm -f bin bootloader/bootloader.asm -o bootloader.bin
+          # Commande pour compiler le kernel
+          gcc -ffreestanding -m32 -c kernel/kernel.c -o kernel.o
+          # Lier les fichiers et générer l'image bootable
+          ld -m elf_i386 -T linker.ld -o os.bin bootloader.bin kernel.o
+
+      - name: Générer l'ISO
+        run: |
+          mkdir -p iso/boot/grub
+          cp os.bin iso/boot/
+          # Créer un fichier de configuration GRUB
+          echo 'set timeout=0' > iso/boot/grub/grub.cfg
+          echo 'set default=0' >> iso/boot/grub/grub.cfg
+          echo 'menuentry "My OS" {' >> iso/boot/grub/grub.cfg
+          echo '    multiboot /boot/os.bin' >> iso/boot/grub/grub.cfg
+          echo '    boot' >> iso/boot/grub/grub.cfg
+          echo '}' >> iso/boot/grub/grub.cfg
+          # Créer l'image ISO (il faut installer grub-mkrescue)
+          sudo apt-get install -y grub2-common xorriso
+          grub-mkrescue -o os.iso iso
+
+      - name: Upload ISO Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: os-iso
+          path: os.iso
