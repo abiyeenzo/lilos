@@ -21,11 +21,17 @@ jobs:
       - name: Test de l'allocateur (hote, 32 bits)
         run: make test-heap
 
+      - name: Fuzz des fonctions de base (hote)
+        run: make test-lib
+
       - name: Compilation
         run: make
 
       - name: Tests dans QEMU (clavier et serie)
         run: python3 tests/qemu_test.py build/lilos.img
+
+      - name: Fuzz du shell (touches aleatoires dans QEMU)
+        run: make fuzz-shell SEED=7 ROUNDS=40
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         continue-on-error: true

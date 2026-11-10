@@ -75,3 +75,14 @@ void paging_init(void) {
         : : "r"((uint32_t)pdpt) : "eax", "memory");
     tss_set_cr3((uint32_t)pdpt);
 }
+
+/* Vrai si toutes les pages de [addr, addr+len) sont presentes. */
+int paging_range_mapped(uint32_t addr, uint32_t len) {
+    if (len == 0) return 1;
+    uint32_t last = addr + len - 1;
+    if (last < addr || last >= RAM_MAP_END) return 0;
+    for (uint32_t pg = addr >> 12; pg <= last >> 12; pg++)
+        if (!(page_tables[pg / 512][pg % 512] & P_PRESENT))
+            return 0;
+    return 1;
+}

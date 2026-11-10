@@ -91,6 +91,7 @@ static inline void cpuid_leaf(uint32_t leaf, uint32_t *r) {
 /* --- paging.c --- */
 void paging_init(void);
 int  paging_nx_enabled(void);
+int  paging_range_mapped(uint32_t addr, uint32_t len);
 
 /* --- heap.c --- */
 struct heap_stats { uint32_t used, free, blocks; };

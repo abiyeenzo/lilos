@@ -4,6 +4,8 @@ LD      := ld
 OBJCOPY := objcopy
 
 BUILD := build
+SEED ?= $(shell date +%s)
+ROUNDS ?= 60
 
 CFLAGS := -m32 -std=gnu11 -O2 -Wall -Wextra -Ikernel \
           -ffreestanding -fno-pic -fno-pie -fno-stack-protector \
@@ -16,7 +18,7 @@ OBJS  := $(BUILD)/entry.o $(patsubst kernel/%.c,$(BUILD)/%.o,$(C_SRC))
 QEMU      := qemu-system-i386
 QEMU_DISK := -drive format=raw,file=$(BUILD)/lilos.img
 
-.PHONY: all run run-serial test-heap test clean
+.PHONY: all run run-serial test-heap test-lib fuzz-shell test clean
 
 all: $(BUILD)/lilos.img
 
@@ -52,6 +54,13 @@ test-heap: | $(BUILD)
 	$(CC) -m32 -O1 -g -DHOST_TEST -Ikernel -fsanitize=undefined \
 		tests/heap_fuzz.c kernel/heap.c kernel/string.c -o $(BUILD)/heap_fuzz
 	$(BUILD)/heap_fuzz
+
+test-lib: | $(BUILD)
+	gcc -O1 -g -w -Ikernel -fsanitize=address,undefined tests/lib_fuzz.c -o $(BUILD)/lib_fuzz
+	$(BUILD)/lib_fuzz
+
+fuzz-shell: all
+	python3 tests/shell_fuzz.py $(SEED) $(ROUNDS) $(BUILD)/lilos.img
 
 test: all
 	python3 tests/qemu_test.py $(BUILD)/lilos.img

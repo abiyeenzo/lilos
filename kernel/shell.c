@@ -184,8 +184,8 @@ static void cmd_hexdump(int argc, char **argv) {
         kputs("usage: hexdump <adresse> [longueur <= 512]\n");
         return;
     }
-    if (addr < 0x1000 || addr > RAM_MAP_END || len > RAM_MAP_END - addr) {
-        kputs("adresse hors de la zone mappee (0x1000 - 0x1000000)\n");
+    if (!paging_range_mapped(addr, len)) {
+        kputs("adresse hors de la zone mappee\n");
         return;
     }
     const uint8_t *p = (const uint8_t *)addr;
