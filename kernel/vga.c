@@ -44,7 +44,52 @@ void vga_set_color(uint8_t fg, uint8_t bg) {
     attr = (uint8_t)((fg & 0x0F) | ((bg & 0x0F) << 4));
 }
 
-void vga_putc(char c) {
+/* Point de code Unicode vers la page de code 437 du VGA. */
+static uint8_t cp437(uint32_t cp) {
+    switch (cp) {
+    case 0xC7: return 0x80;  case 0xFC: return 0x81;  case 0xE9: return 0x82;
+    case 0xE2: return 0x83;  case 0xE4: return 0x84;  case 0xE0: return 0x85;
+    case 0xE7: return 0x87;  case 0xEA: return 0x88;  case 0xEB: return 0x89;
+    case 0xE8: return 0x8A;  case 0xEF: return 0x8B;  case 0xEE: return 0x8C;
+    case 0xC9: return 0x90;  case 0xF4: return 0x93;  case 0xF6: return 0x94;
+    case 0xFB: return 0x96;  case 0xF9: return 0x97;  case 0xA3: return 0x9C;
+    case 0xB0: return 0xF8;  case 0xB2: return 0xFD;  case 0xB5: return 0xE6;
+    case 0xA7: return 0x15;  case 0xAB: return 0xAE;  case 0xBB: return 0xAF;
+    case 0xB7: return 0xFA;  case 0xA8: return 0xF9;  case 0xA4: return 0x0F;
+    case 0xC0: case 0xC2: return 'A';
+    case 0xC8: case 0xCA: case 0xCB: case 0x20AC: return 'E';
+    case 0xCE: case 0xCF: return 'I';
+    case 0xD4: return 'O';
+    case 0xD9: case 0xDB: return 'U';
+    default: return '?';
+    }
+}
+
+/* Decodeur UTF-8 : retourne l'octet VGA a afficher, ou -1 si la sequence
+ * n'est pas terminee. Les octets invalides s'affichent comme '?'. */
+static int utf8_feed(uint8_t b) {
+    static uint32_t cp;
+    static int need;
+
+    if (need) {
+        if ((b & 0xC0) == 0x80) {
+            cp = (cp << 6) | (b & 0x3F);
+            if (--need) return -1;
+            return cp437(cp);
+        }
+        need = 0;                       /* sequence interrompue */
+    }
+    if (b < 0x80) return b;
+    if (b >= 0xC0 && b < 0xE0) { cp = b & 0x1F; need = 1; return -1; }
+    if (b >= 0xE0 && b < 0xF0) { cp = b & 0x0F; need = 2; return -1; }
+    if (b >= 0xF0 && b < 0xF8) { cp = b & 0x07; need = 3; return -1; }
+    return '?';
+}
+
+void vga_putc(char ch) {
+    int g = utf8_feed((uint8_t)ch);
+    if (g < 0) return;
+    char c = (char)g;
     switch (c) {
     case '\n':
         cx = 0;

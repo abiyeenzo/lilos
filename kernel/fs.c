@@ -101,11 +101,11 @@ int fs_list(uint32_t index, const char **name, uint32_t *size) {
 
 const char *fs_strerror(int err) {
     switch (err) {
-    case FS_ENAME:   return "nom invalide (a-z A-Z 0-9 . - _, 23 caracteres max)";
+    case FS_ENAME:   return "nom invalide (a-z A-Z 0-9 . - _, 23 caractères max)";
     case FS_ENOENT:  return "fichier introuvable";
     case FS_EFULL:   return "trop de fichiers";
     case FS_ETOOBIG: return "fichier trop gros (4096 octets max)";
-    case FS_ENOMEM:  return "memoire insuffisante";
+    case FS_ENOMEM:  return "mémoire insuffisante";
     default:         return "erreur";
     }
 }

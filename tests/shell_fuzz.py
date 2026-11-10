@@ -15,9 +15,9 @@ NUMS = ["0", "1", "16", "64", "512", "513", "4096", "0x0", "0x1000", "0xfff", "0
         "0x7efff", "0x7f000", "0x7ffff", "0x80000", "0xfffff0", "0xffffff", "0x1000000",
         "0xffffffff", "0x100000000", "4294967295", "4294967296", "-1", "0x", "0xg", "99999999999",
         "007", "0X1F", ""]
-SAFE = ["ls", "cat", "rm", "cp", "write", "append", "calc", "help", "clear", "echo", "version", "uptime", "date", "mem", "cpuid", "color", "sleep",
+SAFE = ["ls", "afficher", "supprimer", "copier", "ecrire", "ajouter", "calculer", "aide", "cat", "write", "clear", "echo", "version", "uptime", "date", "mem", "cpuid", "color", "sleep",
         "hexdump", "memtest", "history", "protect", "nope", "ECHO", "he lp"]
-ALPHA = "abcdefghijklmnopqrstuvwxyz0123456789 -.=/;,'"
+ALPHA = "abcdefghijklmnopqrstuvwxyz0123456789 -.=/;,'éèàçù@#{}"
 
 
 def rand_cmd():
@@ -50,7 +50,7 @@ def rand_cmd():
 
 
 vm = vmmod.Vm()
-if not vm.wait(r"LilOS pret", 0, 20):
+if not vm.wait(r"LilOS prêt", 0, 20):
     print("ECHEC demarrage")
     sys.exit(1)
 

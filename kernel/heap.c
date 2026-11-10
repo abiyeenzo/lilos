@@ -85,13 +85,13 @@ void kfree(void *p) {
     if (!p) return;
     uint32_t a = (uint32_t)p;
     if (a < heap_lo + HDR || a >= heap_hi || (a - heap_lo) % 8)
-        panic("kfree: pointeur hors du heap");
+        panic("kfree : pointeur hors du heap");
 
     uint32_t f = irq_save();
     struct block *b = (struct block *)(a - HDR);
     check(b);
     if (b->magic == MAGIC_FREE)
-        panic("kfree: double liberation");
+        panic("kfree : double libération");
 
     b->magic = MAGIC_FREE;
     if (b->next && b->next->magic == MAGIC_FREE) {

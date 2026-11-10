@@ -156,15 +156,38 @@ void irq_register(int irq, isr_handler_t h) {
 /* --- exceptions --- */
 
 static const char *const exc_names[32] = {
-    "Division par zero", "Debug", "NMI", "Breakpoint", "Overflow",
-    "Bound range exceeded", "Instruction invalide", "Coprocesseur absent",
-    "Double fault", "Coprocessor segment overrun", "TSS invalide",
-    "Segment absent", "Stack fault", "General protection fault",
-    "Page fault", "Reserve", "Erreur x87", "Alignment check",
-    "Machine check", "Erreur SIMD", "Virtualisation", "Control protection",
-    "Reserve", "Reserve", "Reserve", "Reserve", "Reserve", "Reserve",
-    "Hypervisor injection", "VMM communication", "Security exception",
-    "Reserve"
+    "Division par zéro",
+    "Debug",
+    "Interruption non masquable",
+    "Point d'arrêt",
+    "Dépassement",
+    "Bornes dépassées",
+    "Instruction invalide",
+    "Coprocesseur absent",
+    "Double faute",
+    "Dépassement de segment du coprocesseur",
+    "TSS invalide",
+    "Segment absent",
+    "Faute de pile",
+    "Faute de protection générale",
+    "Défaut de page",
+    "Réservé",
+    "Erreur x87",
+    "Alignement",
+    "Machine check",
+    "Erreur SIMD",
+    "Virtualisation",
+    "Protection de flot de contrôle",
+    "Réservé",
+    "Réservé",
+    "Réservé",
+    "Réservé",
+    "Réservé",
+    "Réservé",
+    "Injection hyperviseur",
+    "Communication VMM",
+    "Exception de sécurité",
+    "Réservé",
 };
 
 static void halt_forever(void) {
@@ -174,7 +197,7 @@ static void halt_forever(void) {
 void panic(const char *msg) {
     __asm__ volatile ("cli");
     vga_set_color(15, 4);
-    kprintf("\n*** KERNEL PANIC: %s ***\n", msg);
+    kprintf("\n*** KERNEL PANIC : %s ***\n", msg);
     halt_forever();
 }
 
@@ -183,7 +206,7 @@ static void double_fault_task(void) {
     __asm__ volatile ("mov %%cr2, %0" : "=r"(cr2));
     vga_set_color(15, 4);
     kprintf("\n*** DOUBLE FAULT ***\n");
-    kprintf("pile corrompue ou debordee ? dernier cr2=%08x\n", cr2);
+    kprintf("pile corrompue ou débordée ? dernier cr2=%08x\n", cr2);
     halt_forever();
 }
 
@@ -192,7 +215,7 @@ static void exception(struct regs *r) {
     __asm__ volatile ("mov %%cr2, %0" : "=r"(cr2));
     __asm__ volatile ("cli");
     vga_set_color(15, 4);
-    kprintf("\n*** EXCEPTION %u: %s ***\n", r->int_no, exc_names[r->int_no]);
+    kprintf("\n*** EXCEPTION %u : %s ***\n", r->int_no, exc_names[r->int_no]);
     kprintf("eip=%08x cs=%04x eflags=%08x err=%08x\n",
             r->eip, r->cs, r->eflags, r->err_code);
     kprintf("eax=%08x ebx=%08x ecx=%08x edx=%08x\n",
@@ -202,9 +225,9 @@ static void exception(struct regs *r) {
     if (r->int_no == 14) {
         uint32_t e = r->err_code;
         kprintf("adresse fautive (cr2)=%08x\n", cr2);
-        kprintf("acces: %s, %s\n",
+        kprintf("accès : %s, %s\n",
                 (e & 1) ? "protection" : "page absente",
-                (e & 16) ? "execution" : (e & 2) ? "ecriture" : "lecture");
+                (e & 16) ? "exécution" : (e & 2) ? "écriture" : "lecture");
     }
     halt_forever();
 }

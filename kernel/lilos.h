@@ -76,10 +76,12 @@ uint32_t timer_ticks(void);
 void     timer_sleep_ms(uint32_t ms);
 
 /* --- keyboard.c --- */
-#define KEY_UP    0x100
-#define KEY_DOWN  0x101
-#define KEY_LEFT  0x102
-#define KEY_RIGHT 0x103
+/* keyboard_getc retourne un point de code Unicode (disposition AZERTY)
+ * ou une des touches speciales ci-dessous. */
+#define KEY_UP    0x200000
+#define KEY_DOWN  0x200001
+#define KEY_LEFT  0x200002
+#define KEY_RIGHT 0x200003
 void keyboard_init(void);
 int  keyboard_getc(void);
 

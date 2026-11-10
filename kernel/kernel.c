@@ -27,25 +27,25 @@ void kmain(void) {
     vga_set_color(11, 0);
     kprintf("LilOS %s\n", LILOS_VERSION);
     vga_set_color(7, 0);
-    kprintf("kernel de %u Ko charge a 0x10000\n\n", ((uint32_t)_end - 0x10000) / 1024);
+    kprintf("kernel de %u Ko chargé à 0x10000\n\n", ((uint32_t)_end - 0x10000) / 1024);
 
     gdt_init();
     ok("GDT");
     idt_init();
     ok("IDT et PIC (IRQ 32-47)");
     timer_init(TIMER_HZ);
-    ok("timer PIT a 100 Hz");
+    ok("timer PIT à 100 Hz");
     keyboard_init();
-    ok("clavier PS/2");
+    ok("clavier PS/2 (AZERTY)");
     paging_init();
-    ok("paging (16 Mo, page 0 protegee)");
+    ok("paging (16 Mo, page 0 protégée)");
     heap_init(HEAP_START, HEAP_END);
     if (!heap_selftest())
-        panic("autotest du heap en echec");
+        panic("autotest du heap en échec");
     ok("heap (15 Mo)");
 
     __asm__ volatile ("sti");
-    kprintf("\nLilOS pret. Tapez help.\n\n");
+    kprintf("\nLilOS prêt. Tapez aide.\n\n");
 
     shell_run();
 }

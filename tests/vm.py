@@ -3,11 +3,33 @@ import os, re, socket, subprocess, tempfile, time
 
 IMG = "build/lilos.img"
 QEMU = os.environ.get("QEMU", "qemu-system-i386")
-KEYS = {" ": "spc", "\n": "ret", "-": "minus", ".": "dot", "\b": "backspace",
-        "\x01": "up", "\x02": "down", "\x0c": "ctrl-l", "/": "slash",
-        ",": "comma", ";": "semicolon", "'": "apostrophe", "=": "equal",
-        "[": "bracket_left", "]": "bracket_right", "\\": "backslash", "`": "grave_accent",
-        "*": "shift-8", "+": "shift-equal", "%": "shift-5", "_": "shift-minus"}
+# Disposition AZERTY francaise. sendkey designe la touche par sa position
+# physique (nom US) : cette table donne ce que la touche produit en AZERTY.
+# (normal, majuscule, AltGr)
+AZERTY = {
+    "grave_accent": ("²", None, None),
+    "1": ("&", "1", None), "2": ("é", "2", "~"), "3": ('"', "3", "#"), "4": ("'", "4", "{"),
+    "5": ("(", "5", "["), "6": ("-", "6", "|"), "7": ("è", "7", "`"), "8": ("_", "8", "\\"),
+    "9": ("ç", "9", "^"), "0": ("à", "0", "@"), "minus": (")", "°", "]"), "equal": ("=", "+", "}"),
+    "q": ("a", "A", None), "w": ("z", "Z", None), "e": ("e", "E", None), "r": ("r", "R", None),
+    "t": ("t", "T", None), "y": ("y", "Y", None), "u": ("u", "U", None), "i": ("i", "I", None),
+    "o": ("o", "O", None), "p": ("p", "P", None),
+    "bracket_left": ("^", "¨", None), "bracket_right": ("$", "£", None),
+    "a": ("q", "Q", None), "s": ("s", "S", None), "d": ("d", "D", None), "f": ("f", "F", None),
+    "g": ("g", "G", None), "h": ("h", "H", None), "j": ("j", "J", None), "k": ("k", "K", None),
+    "l": ("l", "L", None), "semicolon": ("m", "M", None), "apostrophe": ("ù", "%", None),
+    "backslash": ("*", "µ", None),
+    "z": ("w", "W", None), "x": ("x", "X", None), "c": ("c", "C", None), "v": ("v", "V", None),
+    "b": ("b", "B", None), "n": ("n", "N", None), "m": (",", "?", None),
+    "comma": (";", ".", None), "dot": (":", "/", None), "slash": ("!", "§", None),
+    "less": ("<", ">", None),
+}
+CHAR2KEY = {" ": "spc", "\n": "ret", "\b": "backspace", "\x01": "up", "\x02": "down",
+            "\x0c": "ctrl-l", "\t": "tab"}
+for _key, (_n, _s, _a) in AZERTY.items():
+    for _ch, _mod in ((_n, ""), (_s, "shift-"), (_a, "alt_r-")):
+        if _ch:
+            CHAR2KEY[_ch] = _mod + _key
 
 
 class Vm:
@@ -38,7 +60,7 @@ class Vm:
 
     def text(self):
         try:
-            return open(self.log, errors="replace").read()
+            return open(self.log, encoding="utf-8", errors="replace").read()
         except FileNotFoundError:
             return ""
 
@@ -53,7 +75,7 @@ class Vm:
 
     def type(self, line, delay=0.06, enter=True):
         for c in line + ("\n" if enter else ""):
-            key = f"shift-{c.lower()}" if c.isupper() else KEYS.get(c, c)
+            key = CHAR2KEY[c]
             self.sock.sendall(f"sendkey {key}\n".encode())
             time.sleep(delay)
             self.drain()
