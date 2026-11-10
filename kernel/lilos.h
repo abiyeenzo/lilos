@@ -37,6 +37,7 @@ void  *memset(void *dst, int c, size_t n);
 void  *memcpy(void *dst, const void *src, size_t n);
 void  *memmove(void *dst, const void *src, size_t n);
 int    parse_uint(const char *s, uint32_t *out);
+int    parse_int(const char *s, int32_t *out);
 
 /* --- serial.c --- */
 void serial_init(void);
@@ -104,6 +105,23 @@ void  heap_stats(struct heap_stats *s);
 /* --- rtc.c --- */
 struct rtc_time { uint8_t sec, min, hour, day, month; uint16_t year; };
 void rtc_read(struct rtc_time *t);
+
+/* --- fs.c (systeme de fichiers en RAM) --- */
+#define FS_MAX_FILES 32
+#define FS_NAME_MAX  24
+#define FS_FILE_MAX  4096
+#define FS_OK      0
+#define FS_ENAME  (-1)
+#define FS_ENOENT (-2)
+#define FS_EFULL  (-3)
+#define FS_ETOOBIG (-4)
+#define FS_ENOMEM (-5)
+int  fs_write(const char *name, const void *data, uint32_t len, int append);
+int  fs_read(const char *name, const uint8_t **data, uint32_t *len);
+int  fs_remove(const char *name);
+int  fs_copy(const char *src, const char *dst);
+int  fs_list(uint32_t index, const char **name, uint32_t *size);
+const char *fs_strerror(int err);
 
 /* --- shell.c --- */
 void shell_run(void);

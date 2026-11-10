@@ -18,7 +18,7 @@ OBJS  := $(BUILD)/entry.o $(patsubst kernel/%.c,$(BUILD)/%.o,$(C_SRC))
 QEMU      := qemu-system-i386
 QEMU_DISK := -drive format=raw,file=$(BUILD)/lilos.img
 
-.PHONY: all run run-serial test-heap test-lib fuzz-shell test clean
+.PHONY: all run run-serial test-heap test-lib test-fs fuzz-shell test clean
 
 all: $(BUILD)/lilos.img
 
@@ -58,6 +58,11 @@ test-heap: | $(BUILD)
 test-lib: | $(BUILD)
 	gcc -O1 -g -w -Ikernel -fsanitize=address,undefined tests/lib_fuzz.c -o $(BUILD)/lib_fuzz
 	$(BUILD)/lib_fuzz
+
+test-fs: | $(BUILD)
+	gcc -O1 -g -w -DHOST_TEST -Ikernel -fsanitize=address,undefined \
+		tests/fs_fuzz.c kernel/fs.c kernel/heap.c kernel/string.c -o $(BUILD)/fs_fuzz
+	$(BUILD)/fs_fuzz
 
 fuzz-shell: all
 	python3 tests/shell_fuzz.py $(SEED) $(ROUNDS) $(BUILD)/lilos.img

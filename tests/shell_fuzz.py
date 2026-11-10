@@ -15,7 +15,7 @@ NUMS = ["0", "1", "16", "64", "512", "513", "4096", "0x0", "0x1000", "0xfff", "0
         "0x7efff", "0x7f000", "0x7ffff", "0x80000", "0xfffff0", "0xffffff", "0x1000000",
         "0xffffffff", "0x100000000", "4294967295", "4294967296", "-1", "0x", "0xg", "99999999999",
         "007", "0X1F", ""]
-SAFE = ["help", "clear", "echo", "version", "uptime", "date", "mem", "cpuid", "color", "sleep",
+SAFE = ["ls", "cat", "rm", "cp", "write", "append", "calc", "help", "clear", "echo", "version", "uptime", "date", "mem", "cpuid", "color", "sleep",
         "hexdump", "memtest", "history", "protect", "nope", "ECHO", "he lp"]
 ALPHA = "abcdefghijklmnopqrstuvwxyz0123456789 -.=/;,'"
 
@@ -23,6 +23,12 @@ ALPHA = "abcdefghijklmnopqrstuvwxyz0123456789 -.=/;,'"
 def rand_cmd():
     kind = rng.random()
     if kind < 0.45:
+        if rng.random() < 0.35:
+            n = rng.choice(["a", "b.txt", "x-y_z", "..", "bad/n", "A" * 23, "A" * 24, "", "f" * 5])
+            op = rng.choice(["write", "append", "cat", "rm", "ls", "cp"])
+            return f"{op} {n} " + rng.choice(["", "texte", "x" * rng.randint(1, 110), n])
+        if rng.random() < 0.3:
+            return "calc " + rng.choice(NUMS[:20]) + " " + rng.choice(["+", "-", "*", "/", "%", "x", "++"]) + " " + rng.choice(NUMS[:20])
         c = rng.choice(["hexdump", "color", "sleep", "echo", "memtest", "mem", "cpuid", "date", "history"])
         if c == "sleep":
             return "sleep " + rng.choice(["0", "1", "20", "50", "-1", "x", "600001", "99999999999"])

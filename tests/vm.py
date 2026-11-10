@@ -6,7 +6,8 @@ QEMU = os.environ.get("QEMU", "qemu-system-i386")
 KEYS = {" ": "spc", "\n": "ret", "-": "minus", ".": "dot", "\b": "backspace",
         "\x01": "up", "\x02": "down", "\x0c": "ctrl-l", "/": "slash",
         ",": "comma", ";": "semicolon", "'": "apostrophe", "=": "equal",
-        "[": "bracket_left", "]": "bracket_right", "\\": "backslash", "`": "grave_accent"}
+        "[": "bracket_left", "]": "bracket_right", "\\": "backslash", "`": "grave_accent",
+        "*": "shift-8", "+": "shift-equal", "%": "shift-5", "_": "shift-minus"}
 
 
 class Vm:

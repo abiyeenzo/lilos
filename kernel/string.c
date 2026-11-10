@@ -71,3 +71,14 @@ int parse_uint(const char *s, uint32_t *out) {
     *out = v;
     return 0;
 }
+
+/* Entier signe 32 bits, decimal ou hexadecimal, avec '-' optionnel. */
+int parse_int(const char *s, int32_t *out) {
+    int neg = 0;
+    uint32_t v;
+    if (*s == '-') { neg = 1; s++; }
+    if (parse_uint(s, &v)) return -1;
+    if (neg ? v > 0x80000000u : v > 0x7FFFFFFFu) return -1;
+    *out = neg ? (int32_t)(0u - v) : (int32_t)v;
+    return 0;
+}

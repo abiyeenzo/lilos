@@ -80,9 +80,24 @@ struct command {
 static const struct command commands[];
 
 static void cmd_help(int argc, char **argv) {
-    (void)argc; (void)argv;
-    for (const struct command *c = commands; c->name; c++)
-        kprintf("  %-10s %s\n", c->name, c->help);
+    if (argc > 1) {
+        for (const struct command *c = commands; c->name; c++) {
+            if (!strcmp(c->name, argv[1])) {
+                kprintf("%s : %s\n", c->name, c->help);
+                return;
+            }
+        }
+        kprintf("pas d'aide pour %s\n", argv[1]);
+        return;
+    }
+    int col = 0;
+    for (const struct command *c = commands; c->name; c++) {
+        int l = (int)strlen(c->name) + 2;
+        if (col + l > 78) { kputc('\n'); col = 0; }
+        kprintf("%s  ", c->name);
+        col += l;
+    }
+    kputs("\n\nhelp <commande> pour le detail. Fleches: historique. Ctrl+L: efface.\n");
 }
 
 static void cmd_clear(int argc, char **argv) {
@@ -260,6 +275,100 @@ static void cmd_panic(int argc, char **argv) {
     panic("declenche depuis le shell");
 }
 
+/* --- fichiers en RAM et calculatrice --- */
+
+static int join_args(int argc, char **argv, int from, char *buf, size_t max) {
+    size_t n = 0;
+    for (int i = from; i < argc; i++) {
+        size_t l = strlen(argv[i]);
+        if (n + l + 2 > max) return -1;
+        if (i > from) buf[n++] = ' ';
+        memcpy(buf + n, argv[i], l);
+        n += l;
+    }
+    return (int)n;
+}
+
+static void fs_report(int r) {
+    if (r) kprintf("erreur: %s\n", fs_strerror(r));
+}
+
+static void do_write(int argc, char **argv, int append) {
+    char buf[LINE_MAX + 2];
+    if (argc < 2) {
+        kprintf("usage: %s <fichier> [texte]\n", argv[0]);
+        return;
+    }
+    int n = join_args(argc, argv, 2, buf, sizeof(buf) - 1);
+    if (n < 0) {
+        kputs("erreur: texte trop long\n");
+        return;
+    }
+    if (n > 0) buf[n++] = '\n';
+    fs_report(fs_write(argv[1], buf, (uint32_t)n, append));
+}
+
+static void cmd_write(int argc, char **argv) { do_write(argc, argv, 0); }
+static void cmd_append(int argc, char **argv) { do_write(argc, argv, 1); }
+
+static void cmd_cat(int argc, char **argv) {
+    const uint8_t *d;
+    uint32_t len;
+    if (argc < 2) { kputs("usage: cat <fichier>\n"); return; }
+    int r = fs_read(argv[1], &d, &len);
+    if (r) { fs_report(r); return; }
+    for (uint32_t i = 0; i < len; i++)
+        kputc(d[i] == '\n' || d[i] == '\t' || (d[i] >= 32 && d[i] < 127) ? (char)d[i] : '.');
+    if (len && d[len - 1] != '\n') kputc('\n');
+}
+
+static void cmd_ls(int argc, char **argv) {
+    (void)argc; (void)argv;
+    const char *name;
+    uint32_t size, total = 0, count = 0;
+    while (fs_list(count, &name, &size)) {
+        kprintf("  %-24s %5u octets\n", name, size);
+        total += size;
+        count++;
+    }
+    kprintf("%u fichier(s), %u octets (max %d fichiers)\n", count, total, FS_MAX_FILES);
+}
+
+static void cmd_rm(int argc, char **argv) {
+    if (argc < 2) { kputs("usage: rm <fichier>\n"); return; }
+    fs_report(fs_remove(argv[1]));
+}
+
+static void cmd_cp(int argc, char **argv) {
+    if (argc < 3) { kputs("usage: cp <source> <destination>\n"); return; }
+    fs_report(fs_copy(argv[1], argv[2]));
+}
+
+static void cmd_calc(int argc, char **argv) {
+    int32_t a, b, r = 0;
+    if (argc != 4 || parse_int(argv[1], &a) || parse_int(argv[3], &b) || argv[2][1]) {
+        kputs("usage: calc <a> <+ - * / %> <b>   (entiers 32 bits signes)\n");
+        return;
+    }
+    int bad = 0;
+    switch (argv[2][0]) {
+    case '+': bad = __builtin_add_overflow(a, b, &r); break;
+    case '-': bad = __builtin_sub_overflow(a, b, &r); break;
+    case '*': bad = __builtin_mul_overflow(a, b, &r); break;
+    case '/':
+    case '%':
+        if (b == 0) { kputs("erreur: division par zero\n"); return; }
+        if (a == INT32_MIN && b == -1) bad = 1;
+        else r = argv[2][0] == '/' ? a / b : a % b;
+        break;
+    default:
+        kputs("operateur inconnu\n");
+        return;
+    }
+    if (bad) kputs("erreur: debordement (resultat hors 32 bits)\n");
+    else kprintf("%d\n", r);
+}
+
 #pragma GCC diagnostic ignored "-Winfinite-recursion"
 static int recurse(int n) {
     volatile char pad[8192];   /* plus grand qu'une page : teste stack-clash */
@@ -336,6 +445,13 @@ static const struct command commands[] = {
     { "halt",    "eteint (QEMU) ou arrete le CPU",       cmd_halt },
     { "panic",   "provoque un kernel panic",             cmd_panic },
     { "protect", "teste W^X : protect <text|rodata|stack|heap|data>", cmd_protect },
+    { "ls",      "liste les fichiers (RAM)",             cmd_ls },
+    { "write",   "ecrit un fichier : write <f> [texte]", cmd_write },
+    { "append",  "ajoute une ligne : append <f> <texte>", cmd_append },
+    { "cat",     "affiche un fichier",                   cmd_cat },
+    { "cp",      "copie un fichier",                     cmd_cp },
+    { "rm",      "supprime un fichier",                  cmd_rm },
+    { "calc",    "calcul : calc <a> <+ - * / %> <b>",    cmd_calc },
     { "nulltest",  "lit l'adresse 0 (page fault attendu)", cmd_nulltest },
     { "stacktest", "deborde la pile (double fault attendu)", cmd_stacktest },
     { NULL, NULL, NULL }
