@@ -240,7 +240,7 @@ static void ip_rx(const uint8_t *p, uint32_t n) {
     int unicast = dst == net_ip;
     int bcast = dst == 0xFFFFFFFF || dst == (net_ip | ~net_mask);
     if (!unicast && !bcast) return;
-    if (src == 0 || src == 0xFFFFFFFF || src >= 0xE0000000u) return;
+    if (src == 0 || src == 0xFFFFFFFF || src >= 0xE0000000u || src == net_ip) return;   /* source invalide ou usurpee */
 
     const uint8_t *pay = p + hl;
     uint32_t plen = total - hl;

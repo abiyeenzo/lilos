@@ -341,6 +341,10 @@ static void cmd_net(int argc, char **argv) {
     }
     kprintf("carte    : RTL8139, MAC %02x:%02x:%02x:%02x:%02x:%02x, %u trames perdues\n",
             net_mac[0], net_mac[1], net_mac[2], net_mac[3], net_mac[4], net_mac[5], nic_dropped());
+    uint32_t st[8];
+    nic_status(st);
+    kprintf("réception : %u trames, %u remises à zéro ; CR=%02x CAPR=%u CBR=%u ISR=%04x IMR=%04x anneau=%u\n",
+            st[0], st[1], st[5], st[3], st[4], st[6], st[7], st[2]);
     kputs("adresse  : "); print_ip(net_ip);
     kputs("\npasserelle : "); print_ip(net_gw);
     kputs("\nDNS      : "); print_ip(net_dns);

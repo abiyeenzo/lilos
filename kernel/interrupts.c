@@ -70,6 +70,11 @@ void gdt_init(void) {
     tss_df.eflags = 2;
     tss_df.cs = 0x08;
     tss_df.ss = tss_df.ds = tss_df.es = tss_df.fs = tss_df.gs = 0x10;
+    /* Pas de table d'autorisations d'E/S : un offset au-dela de la limite du TSS
+     * interdit TOUS les ports au ring 3. (Avec 0, le CPU prendrait le debut du
+     * TSS pour une table et laisserait passer des acces aux ports materiels.) */
+    tss_main.iomap = sizeof(struct tss);
+    tss_df.iomap = sizeof(struct tss);
     tss_main.ss0 = 0x10;
     tss_main.esp0 = (uint32_t)ring0_stack + sizeof(ring0_stack);
     gdt_set_tss(5, &tss_main);

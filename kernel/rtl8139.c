@@ -15,7 +15,7 @@
 #define REG_CONFIG1 0x52
 
 #define RX_RING    8192
-#define RX_BUF     (RX_RING + 16 + 1536)
+#define RX_BUF     (RX_RING + 16 + 1536)     /* marge : le DMA ne doit jamais sortir de ce tampon */
 #define FRAME_MAX  1536
 #define QUEUE      16
 
@@ -28,9 +28,14 @@ static volatile uint32_t qhead, qtail;
 static uint16_t io;
 static uint32_t rx_off;
 static int present, tx_cur;
-static uint32_t dropped;
+static uint32_t dropped, received, resets;
 
 int nic_present(void) { return present; }
+void nic_status(uint32_t out[8]) {
+    out[0] = received; out[1] = resets; out[2] = rx_off;
+    out[3] = inw(io + REG_CAPR); out[4] = inw(io + 0x3A);        /* CAPR, CBR */
+    out[5] = inb(io + REG_CR); out[6] = inw(io + REG_ISR); out[7] = inw(io + REG_IMR);
+}
 uint32_t nic_dropped(void) { return dropped; }
 
 static void rx_enable(void) {
@@ -38,10 +43,12 @@ static void rx_enable(void) {
     for (int i = 0; i < 100000 && (inb(io + REG_CR) & 0x10); i++)
         ;
     rx_off = 0;
+    tx_cur = 0;                                     /* le materiel reprend au descripteur 0 */
     memset(rx_buf, 0, 16);
     outl(io + REG_RBSTART, (uint32_t)rx_buf);
+    outw(io + REG_CAPR, 0xFFF0);                    /* pointeur de lecture au debut de l'anneau */
     outw(io + REG_IMR, 0x0005);                     /* reception + emission */
-    outl(io + REG_RCR, 0x0000008E);                 /* notre MAC, multicast, diffusion + WRAP */
+    outl(io + REG_RCR, 0x0000000E);                 /* notre MAC, multicast, diffusion ; pas de WRAP */
     outb(io + REG_CR, 0x0C);                        /* RE + TE */
 }
 
@@ -50,20 +57,30 @@ static void rx_drain(void) {
         uint32_t hdr = *(volatile uint32_t *)(rx_buf + rx_off);
         uint32_t status = hdr & 0xFFFF, len = hdr >> 16;
 
-        /* en-tete incoherent : on repart d'un anneau propre plutot que de lire n'importe quoi */
-        if (!(status & 1) || len < 18 || len > FRAME_MAX + 4) {
+        /* longueur absurde : l'anneau est inutilisable, on redemarre le recepteur */
+        if (len < 4 || len > RX_RING - 16) {
             dropped++;
+            resets++;
             rx_enable();
             return;
         }
+
         uint32_t flen = len - 4;                    /* sans le CRC */
-        uint32_t next = (qhead + 1) % QUEUE;
-        if (next != qtail) {
-            queue[qhead].len = flen;
-            memcpy(queue[qhead].data, rx_buf + rx_off + 4, flen);
-            qhead = next;
+        if ((status & 1) && flen >= 14 && flen <= FRAME_MAX) {
+            uint32_t next = (qhead + 1) % QUEUE;
+            if (next != qtail) {
+                /* Sans WRAP le peripherique coupe la trame a la fin de l'anneau :
+                 * on la recolle, et le DMA ne depasse jamais le tampon. */
+                for (uint32_t i = 0; i < flen; i++)
+                    queue[qhead].data[i] = rx_buf[(rx_off + 4 + i) % RX_RING];
+                queue[qhead].len = flen;
+                qhead = next;
+                received++;
+            } else {
+                dropped++;
+            }
         } else {
-            dropped++;
+            dropped++;                              /* erreur, trop courte ou trop longue : on saute */
         }
         rx_off = (rx_off + len + 4 + 3) & ~3u;
         if (rx_off >= RX_RING) rx_off -= RX_RING;

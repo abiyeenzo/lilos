@@ -33,14 +33,14 @@ for _key, (_n, _s, _a) in AZERTY.items():
 
 
 class Vm:
-    def __init__(self, cpu=None, net=False):
+    def __init__(self, cpu=None, net=False, extra=None):
         self.dir = tempfile.mkdtemp()
         self.log = os.path.join(self.dir, "serial.log")
         self.mon = os.path.join(self.dir, "mon")
         self.proc = subprocess.Popen(
             [QEMU, "-drive", f"format=raw,file={IMG}", "-display", "none",
              "-serial", f"file:{self.log}", "-monitor", f"unix:{self.mon},server,nowait",
-             "-no-reboot"] + (["-cpu", cpu] if cpu else []) + (["-nic", "user,model=rtl8139"] if net else []),
+             "-no-reboot"] + (["-cpu", cpu] if cpu else []) + (["-nic", "user,model=rtl8139"] if net else []) + (extra or []),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(100):
             if os.path.exists(self.mon):

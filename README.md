@@ -58,6 +58,8 @@ Mémoire physique : `0x7C00` bootloader, `0x10000` noyau, `0x90000` sommet de la
 ```
 make test-heap test-lib test-fs test-sha test-net   # tests hôte avec ASan et UBSan
 make test                                           # QEMU : clavier, comptes, ring 3, réseau
+make test-attack                                    # 51 attaques depuis le mode utilisateur
+make test-netattack                                  # paquets hostiles envoyés à la VM
 make fuzz-shell SEED=1 ROUNDS=100                   # touches aléatoires dans le shell
 ```
 

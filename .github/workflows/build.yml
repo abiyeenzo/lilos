@@ -30,6 +30,12 @@ jobs:
       - name: Tests dans QEMU (clavier et serie)
         run: python3 tests/qemu_test.py build/lilos.img
 
+      - name: Attaques contre le noyau depuis le mode utilisateur
+        run: make test-attack
+
+      - name: Attaque reseau reelle (paquets hostiles envoyes a la VM)
+        run: make test-netattack
+
       - name: Fuzz du shell (touches aleatoires dans QEMU)
         run: make fuzz-shell SEED=7 ROUNDS=40
 

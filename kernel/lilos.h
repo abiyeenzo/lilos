@@ -176,6 +176,7 @@ int      pci_find(uint16_t vendor, uint16_t device, struct pci_dev *out);
 int      rtl8139_init(void);
 int      nic_present(void);
 uint32_t nic_dropped(void);
+void     nic_status(uint32_t out[8]);
 int      nic_send(const uint8_t *frame, uint32_t len);
 void     net_poll(void);
 

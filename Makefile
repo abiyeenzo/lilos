@@ -15,7 +15,7 @@ LDFLAGS := -m elf_i386 -T linker.ld -nostdlib -z noexecstack --build-id=none
 C_SRC := $(wildcard kernel/*.c)
 
 # Programmes du mode utilisateur : compiles a part, embarques dans le noyau
-USER_PROGS := bonjour moi lire noter noyau ecrase boucle saisie
+USER_PROGS := bonjour moi lire noter noyau ecrase boucle saisie attaque
 USER_OBJS  := $(patsubst %,$(BUILD)/user/%.bin.o,$(USER_PROGS))
 UCFLAGS := -m32 -std=gnu11 -O2 -Wall -Wextra -Iuser -ffreestanding -fno-pic -fno-pie \
            -fno-stack-protector -fno-asynchronous-unwind-tables -mno-sse -mno-mmx -nostdlib
@@ -25,7 +25,7 @@ OBJS  := $(BUILD)/entry.o $(patsubst kernel/%.c,$(BUILD)/%.o,$(C_SRC)) $(USER_OB
 QEMU      := qemu-system-i386
 QEMU_DISK := -drive format=raw,file=$(BUILD)/lilos.img -nic user,model=rtl8139
 
-.PHONY: all run run-serial test-heap test-lib test-fs test-sha test-net fuzz-shell test clean
+.PHONY: all run run-serial test-heap test-lib test-fs test-sha test-net test-attack test-netattack fuzz-shell test clean
 
 all: $(BUILD)/lilos.img
 
@@ -97,6 +97,12 @@ test-sha: | $(BUILD)
 test-net: | $(BUILD)
 	gcc -O1 -g -w -Ikernel -fsanitize=address,undefined tests/net_fuzz.c kernel/net.c kernel/string.c -o $(BUILD)/net_fuzz
 	$(BUILD)/net_fuzz
+
+test-attack: all
+	python3 tests/attack_test.py $(BUILD)/lilos.img
+
+test-netattack: all
+	python3 tests/net_attack.py $(BUILD)/lilos.img
 
 fuzz-shell: all
 	python3 tests/shell_fuzz.py $(SEED) $(ROUNDS) $(BUILD)/lilos.img
