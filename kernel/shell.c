@@ -126,14 +126,11 @@ static void cmd_mem(int argc, char **argv) {
             ((uint32_t)_end - 0x10000) / 1024);
     kprintf("heap   : %u Ko utilises, %u Ko libres, %u blocs\n",
             s.used / 1024, s.free / 1024, s.blocks);
-    kprintf("paging : identite sur %u Mo\n", RAM_MAP_END / (1024 * 1024));
+    kprintf("paging : PAE, identite sur %u Mo, NX %s, W^X actif\n",
+            RAM_MAP_END / (1024 * 1024), paging_nx_enabled() ? "actif" : "indisponible");
 }
 
-static void cpuid(uint32_t leaf, uint32_t *r) {
-    __asm__ volatile ("cpuid"
-                      : "=a"(r[0]), "=b"(r[1]), "=c"(r[2]), "=d"(r[3])
-                      : "a"(leaf), "c"(0));
-}
+#define cpuid cpuid_leaf
 
 static void cmd_cpuid(int argc, char **argv) {
     (void)argc; (void)argv;
@@ -282,6 +279,45 @@ static void cmd_nulltest(int argc, char **argv) {
     kprintf("%u\n", *(volatile uint32_t *)0);
 }
 
+extern char __rodata_start[];
+static const char ro_probe[] = "lecture seule";
+static uint8_t data_probe[16] = { 0xC3 };
+
+static void run_code_at(void *addr) {
+    *(volatile uint8_t *)addr = 0xC3;           /* ret */
+    __asm__ volatile ("call *%0" : : "r"(addr) : "memory", "cc");
+}
+
+static void cmd_protect(int argc, char **argv) {
+    const char *what = argc > 1 ? argv[1] : "";
+
+    if (!strcmp(what, "text")) {
+        kputs("ecriture dans le code du kernel...\n");
+        *(volatile uint8_t *)(void *)cmd_protect = 0x90;
+    } else if (!strcmp(what, "rodata")) {
+        kputs("ecriture dans rodata...\n");
+        *(volatile char *)ro_probe = 'X';
+    } else if (!strcmp(what, "stack") || !strcmp(what, "heap") || !strcmp(what, "data")) {
+        if (!paging_nx_enabled()) {
+            kputs("NX indisponible sur ce processeur\n");
+            return;
+        }
+        kprintf("execution depuis %s...\n", what);
+        if (!strcmp(what, "stack")) {
+            uint8_t buf[16];
+            run_code_at(buf);
+        } else if (!strcmp(what, "heap")) {
+            void *p = kmalloc(16);
+            run_code_at(p);
+        } else {
+            run_code_at(data_probe);
+        }
+        kputs("execution reussie (pas de protection NX)\n");
+    } else {
+        kputs("usage: protect <text|rodata|stack|heap|data>\n");
+    }
+}
+
 static const struct command commands[] = {
     { "help",    "liste les commandes",                  cmd_help },
     { "clear",   "efface l'ecran (Ctrl+L)",              cmd_clear },
@@ -299,6 +335,7 @@ static const struct command commands[] = {
     { "reboot",  "redemarre",                            cmd_reboot },
     { "halt",    "eteint (QEMU) ou arrete le CPU",       cmd_halt },
     { "panic",   "provoque un kernel panic",             cmd_panic },
+    { "protect", "teste W^X : protect <text|rodata|stack|heap|data>", cmd_protect },
     { "nulltest",  "lit l'adresse 0 (page fault attendu)", cmd_nulltest },
     { "stacktest", "deborde la pile (double fault attendu)", cmd_stacktest },
     { NULL, NULL, NULL }

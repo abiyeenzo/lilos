@@ -4,13 +4,21 @@ SECTIONS
 {
     . = 0x10000;
 
+    /* Les sections sont alignees sur une page : le paging leur applique
+     * des droits distincts (code RX, rodata R, donnees RW non executables). */
     .text : {
+        __text_start = .;
         *(.text.entry)
         *(.text .text.*)
+        . = ALIGN(4096);
+        __text_end = .;
     }
 
-    .rodata : ALIGN(16) {
+    .rodata : ALIGN(4096) {
+        __rodata_start = .;
         *(.rodata .rodata.*)
+        . = ALIGN(4096);
+        __rodata_end = .;
     }
 
     .data : ALIGN(16) {

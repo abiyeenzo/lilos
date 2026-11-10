@@ -199,8 +199,13 @@ static void exception(struct regs *r) {
             r->eax, r->ebx, r->ecx, r->edx);
     kprintf("esi=%08x edi=%08x ebp=%08x esp=%08x\n",
             r->esi, r->edi, r->ebp, r->esp);
-    if (r->int_no == 14)
+    if (r->int_no == 14) {
+        uint32_t e = r->err_code;
         kprintf("adresse fautive (cr2)=%08x\n", cr2);
+        kprintf("acces: %s, %s\n",
+                (e & 1) ? "protection" : "page absente",
+                (e & 16) ? "execution" : (e & 2) ? "ecriture" : "lecture");
+    }
     halt_forever();
 }
 

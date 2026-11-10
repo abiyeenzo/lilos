@@ -9,14 +9,14 @@ KEYS = {" ": "spc", "\n": "ret", "-": "minus", ".": "dot"}
 
 
 class Vm:
-    def __init__(self):
+    def __init__(self, cpu=None):
         self.dir = tempfile.mkdtemp()
         self.log = os.path.join(self.dir, "serial.log")
         self.mon = os.path.join(self.dir, "mon")
         self.proc = subprocess.Popen(
             [QEMU, "-drive", f"format=raw,file={IMG}", "-display", "none",
              "-serial", f"file:{self.log}", "-monitor", f"unix:{self.mon},server,nowait",
-             "-no-reboot"],
+             "-no-reboot"] + (["-cpu", cpu] if cpu else []),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(100):
             if os.path.exists(self.mon):
@@ -73,13 +73,21 @@ def check(vm, cmd, pattern, timeout=10):
         print("--- sortie ---\n" + vm.text()[since:] + "\n--------------")
 
 
-def boot():
-    vm = Vm()
+def boot(cpu=None):
+    vm = Vm(cpu)
     if not vm.wait(r"LilOS pret", 0, 20):
         print("ECHEC  demarrage\n" + vm.text())
         vm.close()
         sys.exit(1)
     return vm
+
+
+def fresh(cpu, cmd, pattern, timeout=15):
+    """Un test par demarrage : les exceptions arretent la machine."""
+    vm = boot(cpu)
+    print(f"[cpu={cpu or 'defaut'}]", end=" ")
+    check(vm, cmd, pattern, timeout)
+    vm.close()
 
 
 vm = boot()
@@ -96,16 +104,28 @@ check(vm, "uptime", r"\d+ h \d+ min \d+ s")
 check(vm, "date", r"20\d\d-\d\d-\d\d \d\d:\d\d:\d\d")
 check(vm, "cpuid", r"vendeur : \w+")
 check(vm, "pasunecommande", r"commande inconnue: pasunecommande")
-check(vm, "nulltest", r"EXCEPTION 14: Page fault")
+check(vm, "mem", r"PAE, identite sur 16 Mo, NX (actif|indisponible), W\^X actif")
 vm.close()
 
-vm = boot()
-check(vm, "stacktest", r"DOUBLE FAULT", 15)
-vm.close()
+fault = r"EXCEPTION 14: Page fault[\s\S]*acces: "
+fresh(None, "nulltest", fault + r"page absente, lecture")
+fresh(None, "stacktest", r"DOUBLE FAULT")
+fresh(None, "panic", r"KERNEL PANIC: declenche depuis le shell")
 
-vm = boot()
-check(vm, "panic", r"KERNEL PANIC: declenche depuis le shell")
-vm.close()
+# W^X sans NX (Pentium III : PAE mais pas de bit NX)
+fresh("pentium3", "protect text", fault + r"protection, ecriture")
+fresh("pentium3", "protect rodata", fault + r"protection, ecriture")
+fresh("pentium3", "protect stack", r"NX indisponible")
+fresh("pentium3", "mem", r"NX indisponible")
+
+# W^X complet avec NX
+fresh("max", "mem", r"NX actif")
+fresh("max", "protect text", fault + r"protection, ecriture")
+fresh("max", "protect rodata", fault + r"protection, ecriture")
+fresh("max", "protect stack", fault + r"protection, execution")
+fresh("max", "protect heap", fault + r"protection, execution")
+fresh("max", "protect data", fault + r"protection, execution")
+fresh("max", "stacktest", r"DOUBLE FAULT")
 
 if failures:
     print(f"{len(failures)} test(s) en echec")

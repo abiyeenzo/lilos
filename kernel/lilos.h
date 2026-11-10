@@ -82,8 +82,15 @@ void     timer_sleep_ms(uint32_t ms);
 void keyboard_init(void);
 int  keyboard_getc(void);
 
+static inline void cpuid_leaf(uint32_t leaf, uint32_t *r) {
+    __asm__ volatile ("cpuid"
+                      : "=a"(r[0]), "=b"(r[1]), "=c"(r[2]), "=d"(r[3])
+                      : "a"(leaf), "c"(0));
+}
+
 /* --- paging.c --- */
 void paging_init(void);
+int  paging_nx_enabled(void);
 
 /* --- heap.c --- */
 struct heap_stats { uint32_t used, free, blocks; };
