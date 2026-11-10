@@ -44,8 +44,16 @@ void kmain(void) {
         panic("autotest du heap en échec");
     ok("heap (15 Mo)");
 
+    if (rtl8139_init())
+        ok("réseau RTL8139");
+    else
+        kputs("[    ] pas de carte réseau RTL8139\n");
+
     __asm__ volatile ("sti");
     kprintf("\nLilOS prêt. Tapez aide.\n\n");
 
-    shell_run();
+    for (;;) {
+        uint32_t uid = users_login();
+        shell_run(uid);
+    }
 }

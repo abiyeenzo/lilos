@@ -15,13 +15,23 @@ NUMS = ["0", "1", "16", "64", "512", "513", "4096", "0x0", "0x1000", "0xfff", "0
         "0x7efff", "0x7f000", "0x7ffff", "0x80000", "0xfffff0", "0xffffff", "0x1000000",
         "0xffffffff", "0x100000000", "4294967295", "4294967296", "-1", "0x", "0xg", "99999999999",
         "007", "0X1F", ""]
-SAFE = ["ls", "afficher", "supprimer", "copier", "ecrire", "ajouter", "calculer", "aide", "cat", "write", "clear", "echo", "version", "uptime", "date", "mem", "cpuid", "color", "sleep",
+SAFE = ["ls", "id", "afficher", "supprimer", "copier", "ecrire", "ajouter", "calculer", "aide", "cat", "write", "clear", "echo", "version", "uptime", "date", "mem", "cpuid", "color", "sleep",
         "hexdump", "memtest", "history", "protect", "nope", "ECHO", "he lp"]
 ALPHA = "abcdefghijklmnopqrstuvwxyz0123456789 -.=/;,'éèàçù@#{}"
 
 
+PROGS = ["bonjour", "moi", "lire", "noter", "noyau", "ecrase", "inconnu", "", "../x"]
+
+
 def rand_cmd():
     kind = rng.random()
+    if kind < 0.18:
+        p = rng.choice(PROGS)
+        a = rng.choice(["", "a", "f1 texte", "x" * rng.randint(1, 70), "a b c d e f g h i j", "é"])
+        return f"lancer {p} {a}"
+    if kind < 0.26:
+        return rng.choice(["id", "utilisateurs", "programmes", "droits f1 64", "droits f1 99", "droits",
+                           "proprietaire f1 alice", "proprietaire f1 zzz", "supprimeruser zzz", "creeruser alice"])
     if kind < 0.45:
         if rng.random() < 0.35:
             n = rng.choice(["a", "b.txt", "x-y_z", "..", "bad/n", "A" * 23, "A" * 24, "", "f" * 5])
@@ -53,6 +63,8 @@ vm = vmmod.Vm()
 if not vm.wait(r"LilOS prêt", 0, 20):
     print("ECHEC demarrage")
     sys.exit(1)
+vmmod.provision(vm)
+vmmod.login(vm)
 
 history = []
 fail = None

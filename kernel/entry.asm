@@ -59,6 +59,53 @@ isr_stub_ %+ i:
 %assign i i+1
 %endrep
 
+global isr_stub_128
+isr_stub_128:
+    push dword 0
+    push dword 128
+    jmp isr_common
+
+; Entree en ring 3 : void user_enter(eip, esp_utilisateur). Retourne quand le
+; processus se termine (user_return restaure le contexte du noyau).
+global user_enter
+user_enter:
+    push ebp
+    push ebx
+    push esi
+    push edi
+    mov [saved_kesp], esp
+    mov eax, [esp + 20]
+    mov ecx, [esp + 24]
+    mov dx, 0x23
+    mov ds, dx
+    mov es, dx
+    mov fs, dx
+    mov gs, dx
+    push dword 0x23
+    push ecx
+    push dword 0x202
+    push dword 0x1B
+    push eax
+    iret
+
+; void user_return(int status) : abandonne la pile courante et revient a
+; l'appelant de user_enter avec status en valeur de retour.
+global user_return
+user_return:
+    mov eax, [esp + 4]
+    mov esp, [saved_kesp]
+    mov dx, 0x10
+    mov ds, dx
+    mov es, dx
+    mov fs, dx
+    mov gs, dx
+    cld
+    pop edi
+    pop esi
+    pop ebx
+    pop ebp
+    ret
+
 isr_common:
     pusha
     push ds
@@ -81,6 +128,9 @@ isr_common:
     popa
     add esp, 8
     iret
+
+section .bss
+saved_kesp: resd 1
 
 section .rodata
 global isr_stub_table

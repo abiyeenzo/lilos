@@ -1,41 +1,71 @@
 # LilOS
 
-Petit système d'exploitation x86 32 bits écrit from scratch : bootloader en assembleur NASM, kernel en C, shell interactif.
+Système d'exploitation x86 32 bits écrit from scratch, en français : bootloader NASM, noyau en C, mode utilisateur, comptes multi-utilisateurs, pile réseau et shell. Il démarre en BIOS (QEMU ou machine réelle en mode legacy).
 
-## Contenu
+## Fonctions
 
-- `bootloader/bootloader.asm` : secteur de boot BIOS. Charge le kernel par LBA (INT 13h étendu), active A20, installe une GDT et passe en mode protégé.
-- `kernel/entry.asm` : point d'entrée, mise à zéro du BSS, stubs ISR/IRQ, rechargement GDT et IDT.
-- `kernel/` : GDT, IDT, PIC 8259, timer PIT (100 Hz), clavier PS/2 (Maj, Verr Maj, Ctrl, flèches), paging PAE avec W^X (code en lecture seule, données non exécutables via le bit NX, page 0 et garde de pile non mappées), double fault sur pile dédiée, allocateur `kmalloc`/`kfree`, horloge CMOS, affichage VGA avec défilement et curseur matériel, sortie série COM1, `kprintf`.
-- `kernel/shell.c` : shell en français avec historique (flèches haut et bas), saisie UTF-8 accentuée et les commandes `aide`, `effacer`, `echo`, `version`, `temps`, `date`, `memoire`, `cpuid`, `couleur`, `pause`, `hexdump`, `memtest`, `historique`, `redemarrer`, `eteindre`, `panic`, `proteger`, `ls`, `ecrire`, `ajouter`, `afficher`, `copier`, `supprimer` et `calculer`. Les anciens noms anglais (`help`, `clear`, `cat`, `rm`, `calc`...) restent acceptés. `nulltest`, `stacktest` et `proteger` déclenchent volontairement une exception pour tester les protections.
-- Clavier AZERTY par défaut (AltGr compris : `@ # { [ | \ ^ ] }`). L'affichage VGA convertit l'UTF-8 vers la page de code 437 : é è à ç ù ê ô î etc.
-
-Les exceptions CPU affichent les registres puis arrêtent la machine.
+- **Démarrage** : secteur de boot BIOS, lecture du noyau par LBA, A20, mode protégé.
+- **Noyau** : GDT, IDT, PIC, timer 100 Hz, clavier AZERTY (AltGr compris), VGA avec accents (UTF-8 vers CP437), port série, heap vérifié, système de fichiers en RAM avec propriétaires et droits.
+- **Mémoire** : paging PAE, W^X (code en lecture seule, données non exécutables via NX), SMEP, page de garde de pile, double fault sur pile dédiée, `-fstack-clash-protection`.
+- **Mode utilisateur** : processus en ring 3 avec leur propre espace d'adressage, appels système par `int 0x80`, pointeurs validés, Ctrl+C. Un processus qui touche au noyau est tué sans arrêter le système.
+- **Multi-utilisateur** : comptes `root` et utilisateurs, mots de passe salés (SHA-256 itéré), connexion avec temporisation après un échec, `su`, droits sur les fichiers, commandes d'administration réservées à root.
+- **Réseau** : pilote RTL8139, ARP, IPv4, ICMP (ping), UDP, client DNS. Pas de TCP ni d'IPv6.
+- **Shell** : commandes en français (les noms anglais restent acceptés), historique, saisie accentuée.
 
 ## Compiler et lancer
 
-Dépendances : `nasm`, `gcc` avec support 32 bits (`gcc-multilib`), `binutils`, `qemu-system-i386`.
+Dépendances : `nasm`, `gcc` avec support 32 bits (`gcc-multilib`), `binutils`, `qemu-system-i386`, `python3`.
 
 ```
-make            # produit build/lilos.img
-make run        # lance dans QEMU
-make run-serial # sans fenêtre, sortie sur le terminal
+make              # produit build/lilos.img
+make run          # lance dans QEMU (réseau RTL8139 inclus)
+make run-serial   # sans fenêtre, sortie sur le terminal
 ```
 
-L'image est un disque brut : elle peut aussi être écrite sur une clé USB avec `dd` pour tester sur une machine en mode BIOS ou CSM.
+Au premier démarrage, LilOS demande le mot de passe de `root` puis crée un compte utilisateur. Les comptes et fichiers vivent en RAM : tout est recréé à chaque démarrage. Il faut au moins 32 Mo de RAM.
 
-## Organisation mémoire
+Pour le réseau, QEMU doit émuler une RTL8139 : `qemu-system-i386 -drive format=raw,file=build/lilos.img -nic user,model=rtl8139`. Les adresses par défaut sont celles du réseau utilisateur de QEMU (10.0.2.15, passerelle 10.0.2.2, DNS 10.0.2.3).
 
-| Adresse | Usage |
+## Premiers pas
+
+```
+aide                          # liste des commandes
+ecrire notes.txt café à côté  # crée un fichier (accents compris)
+afficher notes.txt
+droits notes.txt 60           # lecture et écriture pour le propriétaire seulement
+programmes                    # programmes utilisateur embarqués
+lancer bonjour                # exécution en ring 3
+lancer noyau                  # tente de lire le noyau : le processus est tué
+ping 10.0.2.2                 # passerelle
+dns example.com
+```
+
+Commandes réservées à root : `hexdump`, `memoire`, `creeruser`, `supprimeruser`, `proprietaire`, `redemarrer`, `eteindre`, `proteger`, `panic`, `nulltest`, `stacktest`.
+
+## Organisation
+
+| Chemin | Rôle |
 | --- | --- |
-| `0x7C00` | bootloader |
-| `0x10000` | kernel (code, données, BSS) |
-| `0x90000` | sommet de la pile du kernel |
-| `0x100000` - `0x1000000` | heap |
+| `bootloader/` | secteur de boot |
+| `kernel/` | noyau : interruptions, paging, heap, fichiers, comptes, processus, réseau, shell |
+| `user/` | programmes du mode utilisateur et leur bibliothèque |
+| `tests/` | tests hôte, fuzzers et tests QEMU |
 
-## CI
+Mémoire physique : `0x7C00` bootloader, `0x10000` noyau, `0x90000` sommet de la pile, `0x100000` à `0x1000000` heap, `0x1000000` à `0x2000000` pages des processus. Les processus voient `0x40000000` à `0x40100000`.
 
-Chaque push lance un fuzzer de l'allocateur, compile l'image, la démarre dans QEMU et pilote le shell au clavier (via le moniteur QEMU) en lisant la sortie série. Le clavier AZERTY et les accents sont testés en tapant de vraies touches. Les protections sont testées avec un CPU sans NX (`pentium3`) et avec NX (`max`).
+## Tests
+
+```
+make test-heap test-lib test-fs test-sha test-net   # tests hôte avec ASan et UBSan
+make test                                           # QEMU : clavier, comptes, ring 3, réseau
+make fuzz-shell SEED=1 ROUNDS=100                   # touches aléatoires dans le shell
+```
+
+Les tests QEMU tapent de vraies touches AZERTY via le moniteur et lisent la sortie série. Le fuzzer réseau envoie des trames valides, mutées et aléatoires à la pile. La CI lance tout à chaque push.
+
+## Sécurité
+
+Voir [SECURITY.md](SECURITY.md) pour le modèle de menace, ce qui est protégé et ce qui ne l'est pas.
 
 ## Licence
 

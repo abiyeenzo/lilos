@@ -24,7 +24,7 @@ AZERTY = {
     "comma": (";", ".", None), "dot": (":", "/", None), "slash": ("!", "§", None),
     "less": ("<", ">", None),
 }
-CHAR2KEY = {" ": "spc", "\n": "ret", "\b": "backspace", "\x01": "up", "\x02": "down",
+CHAR2KEY = {"\x03": "ctrl-c", " ": "spc", "\n": "ret", "\b": "backspace", "\x01": "up", "\x02": "down",
             "\x0c": "ctrl-l", "\t": "tab"}
 for _key, (_n, _s, _a) in AZERTY.items():
     for _ch, _mod in ((_n, ""), (_s, "shift-"), (_a, "alt_r-")):
@@ -33,14 +33,14 @@ for _key, (_n, _s, _a) in AZERTY.items():
 
 
 class Vm:
-    def __init__(self, cpu=None):
+    def __init__(self, cpu=None, net=False):
         self.dir = tempfile.mkdtemp()
         self.log = os.path.join(self.dir, "serial.log")
         self.mon = os.path.join(self.dir, "mon")
         self.proc = subprocess.Popen(
             [QEMU, "-drive", f"format=raw,file={IMG}", "-display", "none",
              "-serial", f"file:{self.log}", "-monitor", f"unix:{self.mon},server,nowait",
-             "-no-reboot"] + (["-cpu", cpu] if cpu else []),
+             "-no-reboot"] + (["-cpu", cpu] if cpu else []) + (["-nic", "user,model=rtl8139"] if net else []),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(100):
             if os.path.exists(self.mon):
@@ -85,3 +85,35 @@ class Vm:
         self.proc.wait()
 
 
+
+
+PROMPT = r"\w+[#$] "
+ROOT_PW = "rootpw1"
+USER, USER_PW = "alice", "alicepw"
+
+
+def _step(vm, pattern, text, pos, timeout=20):
+    """Attend un message apres pos, puis tape la reponse. Retourne la nouvelle position."""
+    if not vm.wait(pattern, pos, timeout):
+        raise RuntimeError(f"attendu /{pattern}/ :\n" + vm.text()[pos:])
+    end = len(vm.text())
+    vm.type(text, delay=0.03)
+    return end
+
+
+def provision(vm):
+    """Premier demarrage : mot de passe root, puis un compte utilisateur."""
+    p = 0
+    p = _step(vm, r"Nouveau mot de passe", ROOT_PW, p)
+    p = _step(vm, r"Confirmez", ROOT_PW, p)
+    p = _step(vm, r"Nom du compte", USER, p)
+    p = _step(vm, r"Nouveau mot de passe", USER_PW, p)
+    _step(vm, r"Confirmez", USER_PW, p)
+
+
+def login(vm, user="root", pw=ROOT_PW, expect_prompt=True):
+    pos = max(0, len(vm.text()) - 4000)
+    p = _step(vm, r"lilos login :", user, pos)
+    p = _step(vm, r"Mot de passe :", pw, p)
+    if expect_prompt and not vm.wait(PROMPT, p, 20):
+        raise RuntimeError("connexion echouee :\n" + vm.text()[p:])

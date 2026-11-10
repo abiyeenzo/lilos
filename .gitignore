@@ -2,3 +2,5 @@ build/
 serial.log
 *.o
 *.img
+__pycache__/
+*.pyc

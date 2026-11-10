@@ -22,7 +22,7 @@ jobs:
         run: make test-heap
 
       - name: Fuzz des fonctions de base (hote)
-        run: make test-lib test-fs
+        run: make test-lib test-fs test-sha test-net
 
       - name: Compilation
         run: make

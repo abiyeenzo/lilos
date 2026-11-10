@@ -97,6 +97,10 @@ static void on_key(struct regs *r) {
 
     uint32_t c = translate(code, shift, altgr, caps);
     if (!c) return;
+    if (ctrl && c == 'c') {             /* Ctrl+C : interrompt le processus utilisateur */
+        user_ctrlc();
+        return;
+    }
     if (ctrl && c >= 'a' && c <= 'z') c &= 0x1F;
     push((int)c);
 }
@@ -108,6 +112,7 @@ void keyboard_init(void) {
 
 int keyboard_getc(void) {
     for (;;) {
+        net_poll();                     /* repond aux paquets (ARP, ping) pendant l'attente */
         __asm__ volatile ("cli");
         if (qtail != qhead) {
             int k = queue[qtail];

@@ -5,6 +5,12 @@
 #define HIST_MAX 16
 
 static char history[HIST_MAX][LINE_MAX];
+
+/* utilisateur courant ; su empile, deconnexion depile */
+static uint32_t uid_stack[4];
+static int uid_depth;
+static int logout_req;
+#define UID() (uid_stack[uid_depth])
 static uint32_t hist_count;
 
 extern char _end[];
@@ -18,19 +24,6 @@ struct line {
     uint8_t cl[LINE_MAX];
     int     len, nch;
 };
-
-static int utf8_encode(uint32_t cp, char *out) {
-    if (cp < 0x80) { out[0] = (char)cp; return 1; }
-    if (cp < 0x800) {
-        out[0] = (char)(0xC0 | (cp >> 6));
-        out[1] = (char)(0x80 | (cp & 0x3F));
-        return 2;
-    }
-    out[0] = (char)(0xE0 | (cp >> 12));
-    out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-    out[2] = (char)(0x80 | (cp & 0x3F));
-    return 3;
-}
 
 static void line_clear(struct line *l) {
     while (l->nch > 0) {
@@ -57,7 +50,7 @@ static void line_set(struct line *l, const char *src) {
 
 static void line_add(struct line *l, uint32_t cp) {
     char enc[4];
-    int n = utf8_encode(cp, enc);
+    int n = (int)utf8_encode(cp, enc);
     if (l->len + n >= LINE_MAX) return;
     memcpy(l->buf + l->len, enc, (size_t)n);
     l->len += n;
@@ -74,10 +67,10 @@ static void line_back(struct line *l) {
 }
 
 static void prompt(void) {
-    vga_set_color(10, 0);
-    kputs("lilos");
+    vga_set_color(UID() == 0 ? 12 : 10, 0);
+    kputs(users_name(UID()));
     vga_set_color(7, 0);
-    kputs("> ");
+    kputs(UID() == 0 ? "# " : "$ ");
 }
 
 static void readline(char *out) {
@@ -122,6 +115,7 @@ struct command {
     const char *alias;      /* ancien nom anglais, toujours accepte */
     const char *help;
     void (*fn)(int argc, char **argv);
+    int root;               /* reserve a root */
 };
 
 static const struct command commands[];
@@ -322,6 +316,196 @@ static void cmd_panic(int argc, char **argv) {
     panic("déclenché depuis le shell");
 }
 
+static void fs_report(int r);
+
+/* --- reseau --- */
+
+static void print_ip(uint32_t ip) {
+    kprintf("%u.%u.%u.%u", ip >> 24, (ip >> 16) & 255, (ip >> 8) & 255, ip & 255);
+}
+
+static void cmd_net(int argc, char **argv) {
+    if (argc > 1) {
+        uint32_t ip, gw, dns, mask = IP4(255, 255, 255, 0);
+        if (strcmp(argv[1], "config") || argc != 5 || parse_ip(argv[2], &ip) ||
+            parse_ip(argv[3], &gw) || parse_ip(argv[4], &dns)) {
+            kputs("usage : reseau [config <ip> <passerelle> <dns>]\n");
+            return;
+        }
+        if (UID() != 0) { kputs("permission refusée\n"); return; }
+        net_ip = ip; net_gw = gw; net_dns = dns; net_mask = mask;
+    }
+    if (!nic_present()) {
+        kputs("aucune carte réseau (RTL8139 attendue : qemu -nic user,model=rtl8139)\n");
+        return;
+    }
+    kprintf("carte    : RTL8139, MAC %02x:%02x:%02x:%02x:%02x:%02x, %u trames perdues\n",
+            net_mac[0], net_mac[1], net_mac[2], net_mac[3], net_mac[4], net_mac[5], nic_dropped());
+    kputs("adresse  : "); print_ip(net_ip);
+    kputs("\npasserelle : "); print_ip(net_gw);
+    kputs("\nDNS      : "); print_ip(net_dns);
+    kputc('\n');
+}
+
+static void cmd_arp(int argc, char **argv) {
+    (void)argc; (void)argv;
+    uint32_t ip;
+    uint8_t m[6];
+    int n = 0;
+    for (int i = 0; net_arp_entry(i, &ip, m); i++, n++) {
+        kputs("  "); print_ip(ip);
+        kprintf("  %02x:%02x:%02x:%02x:%02x:%02x\n", m[0], m[1], m[2], m[3], m[4], m[5]);
+    }
+    if (!n) kputs("cache ARP vide\n");
+}
+
+static int resolve_or_report(const char *name, uint32_t *ip) {
+    int r = net_resolve(name, ip);
+    if (r == -2) kputs("aucune carte réseau\n");
+    else if (r == -3) kputs("nom d'hôte invalide\n");
+    else if (r) kprintf("impossible de résoudre %s\n", name);
+    return r;
+}
+
+static void cmd_dns(int argc, char **argv) {
+    uint32_t ip;
+    if (argc != 2) { kputs("usage : dns <nom>\n"); return; }
+    if (resolve_or_report(argv[1], &ip)) return;
+    kprintf("%s : ", argv[1]); print_ip(ip); kputc('\n');
+}
+
+static void cmd_ping(int argc, char **argv) {
+    uint32_t ip, rtt;
+    if (argc != 2) { kputs("usage : ping <adresse ou nom>\n"); return; }
+    if (resolve_or_report(argv[1], &ip)) return;
+    int got = 0;
+    for (int i = 0; i < 4; i++) {
+        int r = net_ping(ip, 2000, &rtt);
+        if (r == 0) {
+            got++;
+            kputs("réponse de "); print_ip(ip); kprintf(" : temps=%u ms\n", rtt);
+        } else {
+            kputs("délai dépassé pour "); print_ip(ip); kputc('\n');
+        }
+        if (i < 3) timer_sleep_ms(300);
+    }
+    kprintf("%d envoyé(s), %d reçu(s)\n", 4, got);
+}
+
+/* --- comptes et processus --- */
+
+static void cmd_id(int argc, char **argv) {
+    (void)argc; (void)argv;
+    kprintf("uid=%u(%s)\n", UID(), users_name(UID()));
+}
+
+static void cmd_users(int argc, char **argv) {
+    (void)argc; (void)argv;
+    const char *name;
+    uint32_t uid;
+    for (int i = 0; users_list(i, &name, &uid); i++)
+        kprintf("  %-16s uid %u\n", name, uid);
+}
+
+static int check_password(const char *name) {
+    char pw[72];
+    uint32_t uid;
+    kputs("Mot de passe : ");
+    read_secret(pw, sizeof(pw));
+    int ok = users_check(name, pw, &uid);
+    memset(pw, 0, sizeof(pw));
+    if (!ok) timer_sleep_ms(1000);
+    return ok;
+}
+
+static void cmd_su(int argc, char **argv) {
+    const char *name = argc > 1 ? argv[1] : "root";
+    uint32_t uid;
+    if (!users_find_uid(name, &uid)) { kputs("utilisateur inconnu\n"); return; }
+    if (uid_depth >= 3) { kputs("trop de su imbriqués\n"); return; }
+    if (UID() != 0 && !check_password(name)) { kputs("su : mot de passe incorrect\n"); return; }
+    uid_stack[++uid_depth] = uid;
+}
+
+static void cmd_logout(int argc, char **argv) {
+    (void)argc; (void)argv;
+    if (uid_depth > 0) uid_depth--;
+    else logout_req = 1;
+}
+
+static void cmd_passwd(int argc, char **argv) {
+    const char *target = argc > 1 ? argv[1] : users_name(UID());
+    uint32_t uid;
+    char pw[72];
+    if (!users_find_uid(target, &uid)) { kputs("utilisateur inconnu\n"); return; }
+    if (UID() != 0 && uid != UID()) { kputs("permission refusée\n"); return; }
+    if (UID() != 0) {                       /* le mot de passe actuel est exige */
+        kputs("Mot de passe actuel : ");
+        char cur[72];
+        read_secret(cur, sizeof(cur));
+        uint32_t u2;
+        int ok = users_check(target, cur, &u2);
+        memset(cur, 0, sizeof(cur));
+        if (!ok) { timer_sleep_ms(1000); kputs("mot de passe incorrect\n"); return; }
+    }
+    if (ask_new_password(pw, sizeof(pw))) return;
+    users_set_password(target, pw);
+    memset(pw, 0, sizeof(pw));
+    kputs("mot de passe modifié\n");
+}
+
+static void cmd_adduser(int argc, char **argv) {
+    char pw[72];
+    uint32_t existing;
+    if (argc < 2) { kputs("usage : creeruser <nom>\n"); return; }
+    if (users_find_uid(argv[1], &existing)) { kputs("ce compte existe déjà\n"); return; }
+    if (ask_new_password(pw, sizeof(pw))) return;
+    int r = users_add(argv[1], pw, 0);
+    memset(pw, 0, sizeof(pw));
+    if (r == -1) kputs("nom invalide (a-z, 0-9, _ ; 15 caractères maximum)\n");
+    else if (r == -2) kputs("ce compte existe déjà\n");
+    else if (r < 0) kputs("trop de comptes\n");
+    else kprintf("compte %s créé (uid %d)\n", argv[1], r);
+}
+
+static void cmd_deluser(int argc, char **argv) {
+    if (argc < 2) { kputs("usage : supprimeruser <nom>\n"); return; }
+    if (users_remove(argv[1])) kputs("suppression impossible (compte inconnu ou root)\n");
+    else kputs("compte supprimé avec ses fichiers\n");
+}
+
+static void cmd_chmod(int argc, char **argv) {
+    if (argc < 3 || strlen(argv[2]) != 2 || argv[2][0] < '0' || argv[2][0] > '7' ||
+        argv[2][1] < '0' || argv[2][1] > '7') {
+        kputs("usage : droits <fichier> <PA>   (P propriétaire, A autres ; 4 lecture + 2 écriture)\n");
+        return;
+    }
+    uint8_t mode = (uint8_t)(((argv[2][0] - '0') << 3) | (argv[2][1] - '0'));
+    fs_report(fs_chmod(argv[1], mode, UID()));
+}
+
+static void cmd_chown(int argc, char **argv) {
+    uint32_t uid;
+    if (argc < 3) { kputs("usage : proprietaire <fichier> <utilisateur>\n"); return; }
+    if (!users_find_uid(argv[2], &uid)) { kputs("utilisateur inconnu\n"); return; }
+    fs_report(fs_chown(argv[1], uid, UID()));
+}
+
+static void cmd_programs(int argc, char **argv) {
+    (void)argc; (void)argv;
+    for (int i = 0; i < user_program_count(); i++)
+        kprintf("%s  ", user_program_name(i));
+    kputs("\n");
+}
+
+static void cmd_run(int argc, char **argv) {
+    if (argc < 2) { kputs("usage : lancer <programme> [arguments]\n"); return; }
+    int st = user_run(argv[1], argc - 1, argv + 1, UID());
+    if (st == -1) kprintf("lancer : programme inconnu ou invalide : %s\n", argv[1]);
+    else if (st == USER_KILLED) kputs("\nprocessus interrompu (Ctrl+C)\n");
+    else if (st != 0 && st != USER_FAULTED) kprintf("(code de sortie %d)\n", st);
+}
+
 /* --- fichiers en RAM et calculatrice --- */
 
 static int join_args(int argc, char **argv, int from, char *buf, size_t max) {
@@ -352,7 +536,7 @@ static void do_write(int argc, char **argv, int append) {
         return;
     }
     if (n > 0) buf[n++] = '\n';
-    fs_report(fs_write(argv[1], buf, (uint32_t)n, append));
+    fs_report(fs_write(argv[1], buf, (uint32_t)n, append, UID()));
 }
 
 static void cmd_write(int argc, char **argv) { do_write(argc, argv, 0); }
@@ -362,20 +546,32 @@ static void cmd_cat(int argc, char **argv) {
     const uint8_t *d;
     uint32_t len;
     if (argc < 2) { kputs("usage : afficher <fichier>\n"); return; }
-    int r = fs_read(argv[1], &d, &len);
+    int r = fs_read(argv[1], &d, &len, UID());
     if (r) { fs_report(r); return; }
     for (uint32_t i = 0; i < len; i++)
         kputc(d[i] == '\n' || d[i] == '\t' || (d[i] >= 32 && d[i] != 127) ? (char)d[i] : '.');
     if (len && d[len - 1] != '\n') kputc('\n');
 }
 
+static void mode_str(uint8_t m, char *out) {
+    for (int i = 0; i < 2; i++) {
+        uint8_t b = (m >> (3 - 3 * i)) & 7;
+        out[3 * i] = b & 4 ? 'r' : '-';
+        out[3 * i + 1] = b & 2 ? 'w' : '-';
+        out[3 * i + 2] = '-';
+    }
+    out[6] = 0;
+}
+
 static void cmd_ls(int argc, char **argv) {
     (void)argc; (void)argv;
-    const char *name;
-    uint32_t size, total = 0, count = 0;
-    while (fs_list(count, &name, &size)) {
-        kprintf("  %-24s %5u octets\n", name, size);
-        total += size;
+    struct fs_info f;
+    uint32_t total = 0, count = 0;
+    char ms[8];
+    while (fs_list(count, &f)) {
+        mode_str(f.mode, ms);
+        kprintf("  %s  %-10s %-24s %5u octets\n", ms, users_name(f.uid), f.name, f.size);
+        total += f.size;
         count++;
     }
     kprintf("%u fichier(s), %u octets (max %d fichiers)\n", count, total, FS_MAX_FILES);
@@ -383,12 +579,12 @@ static void cmd_ls(int argc, char **argv) {
 
 static void cmd_rm(int argc, char **argv) {
     if (argc < 2) { kputs("usage : supprimer <fichier>\n"); return; }
-    fs_report(fs_remove(argv[1]));
+    fs_report(fs_remove(argv[1], UID()));
 }
 
 static void cmd_cp(int argc, char **argv) {
     if (argc < 3) { kputs("usage : copier <source> <destination>\n"); return; }
-    fs_report(fs_copy(argv[1], argv[2]));
+    fs_report(fs_copy(argv[1], argv[2], UID()));
 }
 
 static void cmd_calc(int argc, char **argv) {
@@ -475,33 +671,48 @@ static void cmd_protect(int argc, char **argv) {
 }
 
 static const struct command commands[] = {
-    { "aide", "help", "liste les commandes (aide <commande> pour le détail)", cmd_help },
-    { "effacer", "clear", "efface l'écran (Ctrl+L)", cmd_clear },
-    { "echo", NULL, "affiche ses arguments", cmd_echo },
-    { "version", NULL, "version du système", cmd_version },
-    { "temps", "uptime", "durée depuis le démarrage", cmd_uptime },
-    { "date", NULL, "date et heure (horloge CMOS)", cmd_date },
-    { "memoire", "mem", "mémoire du kernel, heap et paging", cmd_mem },
-    { "cpuid", NULL, "fabricant et modèle du processeur", cmd_cpuid },
-    { "couleur", "color", "couleurs du texte : couleur <texte> [fond]", cmd_color },
-    { "pause", "sleep", "attend un délai : pause <ms>", cmd_sleep },
-    { "hexdump", NULL, "affiche la mémoire : hexdump <adresse> [longueur]", cmd_hexdump },
-    { "memtest", NULL, "teste l'allocateur mémoire", cmd_memtest },
-    { "historique", "history", "dernières commandes", cmd_history },
-    { "redemarrer", "reboot", "redémarre la machine", cmd_reboot },
-    { "eteindre", "halt", "éteint (QEMU) ou arrête le processeur", cmd_halt },
-    { "panic", NULL, "provoque un kernel panic", cmd_panic },
-    { "proteger", "protect", "teste W^X : proteger <text|rodata|stack|heap|data>", cmd_protect },
-    { "ls", "lister", "liste les fichiers (RAM)", cmd_ls },
-    { "ecrire", "write", "écrit un fichier : ecrire <fichier> [texte]", cmd_write },
-    { "ajouter", "append", "ajoute une ligne : ajouter <fichier> <texte>", cmd_append },
-    { "afficher", "cat", "affiche un fichier", cmd_cat },
-    { "copier", "cp", "copie un fichier", cmd_cp },
-    { "supprimer", "rm", "supprime un fichier", cmd_rm },
-    { "calculer", "calc", "calcule : calculer <a> <+ - * / %> <b>", cmd_calc },
-    { "nulltest", NULL, "lit l'adresse 0 (page fault attendu)", cmd_nulltest },
-    { "stacktest", NULL, "déborde la pile (double fault attendu)", cmd_stacktest },
-    { NULL, NULL, NULL, NULL }
+    { "aide", "help", "liste les commandes (aide <commande> pour le détail)", cmd_help, 0 },
+    { "effacer", "clear", "efface l'écran (Ctrl+L)", cmd_clear, 0 },
+    { "echo", NULL, "affiche ses arguments", cmd_echo, 0 },
+    { "version", NULL, "version du système", cmd_version, 0 },
+    { "temps", "uptime", "durée depuis le démarrage", cmd_uptime, 0 },
+    { "date", NULL, "date et heure (horloge CMOS)", cmd_date, 0 },
+    { "memoire", "mem", "mémoire du kernel, heap et paging", cmd_mem, 1 },
+    { "cpuid", NULL, "fabricant et modèle du processeur", cmd_cpuid, 0 },
+    { "couleur", "color", "couleurs du texte : couleur <texte> [fond]", cmd_color, 0 },
+    { "pause", "sleep", "attend un délai : pause <ms>", cmd_sleep, 0 },
+    { "hexdump", NULL, "affiche la mémoire : hexdump <adresse> [longueur]", cmd_hexdump, 1 },
+    { "memtest", NULL, "teste l'allocateur mémoire", cmd_memtest, 0 },
+    { "historique", "history", "dernières commandes", cmd_history, 0 },
+    { "redemarrer", "reboot", "redémarre la machine", cmd_reboot, 1 },
+    { "eteindre", "halt", "éteint (QEMU) ou arrête le processeur", cmd_halt, 1 },
+    { "panic", NULL, "provoque un kernel panic", cmd_panic, 1 },
+    { "proteger", "protect", "teste W^X : proteger <text|rodata|stack|heap|data>", cmd_protect, 1 },
+    { "ls", "lister", "liste les fichiers (RAM)", cmd_ls, 0 },
+    { "ecrire", "write", "écrit un fichier : ecrire <fichier> [texte]", cmd_write, 0 },
+    { "ajouter", "append", "ajoute une ligne : ajouter <fichier> <texte>", cmd_append, 0 },
+    { "afficher", "cat", "affiche un fichier", cmd_cat, 0 },
+    { "copier", "cp", "copie un fichier", cmd_cp, 0 },
+    { "supprimer", "rm", "supprime un fichier", cmd_rm, 0 },
+    { "calculer", "calc", "calcule : calculer <a> <+ - * / %> <b>", cmd_calc, 0 },
+    { "nulltest", NULL, "lit l'adresse 0 (page fault attendu)", cmd_nulltest, 1 },
+    { "stacktest", NULL, "déborde la pile (double fault attendu)", cmd_stacktest, 1 },
+    { "id", NULL, "affiche l'utilisateur courant", cmd_id, 0 },
+    { "utilisateurs", "users", "liste les comptes", cmd_users, 0 },
+    { "su", NULL, "change d'utilisateur : su [nom]", cmd_su, 0 },
+    { "deconnexion", "logout", "quitte la session (ou le dernier su)", cmd_logout, 0 },
+    { "motdepasse", "passwd", "change un mot de passe : motdepasse [nom]", cmd_passwd, 0 },
+    { "creeruser", "adduser", "crée un compte : creeruser <nom>", cmd_adduser, 1 },
+    { "supprimeruser", "deluser", "supprime un compte : supprimeruser <nom>", cmd_deluser, 1 },
+    { "droits", "chmod", "droits d'un fichier : droits <fichier> <PA>", cmd_chmod, 0 },
+    { "proprietaire", "chown", "change le propriétaire : proprietaire <f> <nom>", cmd_chown, 1 },
+    { "programmes", "programs", "liste les programmes utilisateur", cmd_programs, 0 },
+    { "lancer", "run", "lance un programme en mode utilisateur : lancer <nom> [args]", cmd_run, 0 },
+    { "reseau", "net", "état du réseau : reseau [config <ip> <passerelle> <dns>]", cmd_net, 0 },
+    { "ping", NULL, "ping <adresse ou nom>", cmd_ping, 0 },
+    { "dns", "resoudre", "résout un nom : dns <nom>", cmd_dns, 0 },
+    { "arp", NULL, "affiche le cache ARP", cmd_arp, 0 },
+    { NULL, NULL, NULL, NULL, 0 }
 };
 
 static void execute(char *line) {
@@ -518,6 +729,10 @@ static void execute(char *line) {
 
     for (const struct command *c = commands; c->name; c++) {
         if (!strcmp(c->name, argv[0]) || (c->alias && !strcmp(c->alias, argv[0]))) {
+            if (c->root && UID() != 0) {
+                kputs("permission refusée\n");
+                return;
+            }
             c->fn(argc, argv);
             return;
         }
@@ -525,10 +740,16 @@ static void execute(char *line) {
     kprintf("commande inconnue : %s (essayez aide)\n", argv[0]);
 }
 
-void shell_run(void) {
+void shell_run(uint32_t uid) {
     char line[LINE_MAX];
 
-    for (;;) {
+    uid_stack[0] = uid;
+    uid_depth = 0;
+    logout_req = 0;
+    hist_count = 0;
+    memset(history, 0, sizeof(history));
+
+    while (!logout_req) {
         prompt();
         readline(line);
         if (!line[0]) continue;
@@ -537,4 +758,6 @@ void shell_run(void) {
         hist_count++;
         execute(line);
     }
+    vga_set_color(7, 0);
+    kputc('\n');
 }

@@ -12,7 +12,7 @@ struct dt_ptr {
     uint32_t base;
 } __attribute__((packed));
 
-static struct gdt_entry gdt[5];
+static struct gdt_entry gdt[7];
 static struct dt_ptr gdtp;
 
 struct tss {
@@ -22,11 +22,13 @@ struct tss {
     uint16_t trap, iomap;
 } __attribute__((packed));
 
-#define SEL_TSS_MAIN 0x18
-#define SEL_TSS_DF   0x20
+#define SEL_TSS_MAIN 0x28
+#define SEL_TSS_DF   0x30
 
 static struct tss tss_main, tss_df;
 static uint8_t df_stack[4096] __attribute__((aligned(16)));
+/* Pile utilisee par le CPU a chaque entree en ring 0 depuis le mode utilisateur */
+static uint8_t ring0_stack[8192] __attribute__((aligned(16)));
 
 static void double_fault_task(void);
 
@@ -58,6 +60,8 @@ void gdt_init(void) {
     memset(&gdt[0], 0, sizeof(gdt[0]));
     gdt_set(1, 0x9A);
     gdt_set(2, 0x92);
+    gdt_set(3, 0xFA);                   /* code utilisateur (ring 3) */
+    gdt_set(4, 0xF2);                   /* donnees utilisateur */
 
     memset(&tss_main, 0, sizeof(tss_main));
     memset(&tss_df, 0, sizeof(tss_df));
@@ -66,8 +70,10 @@ void gdt_init(void) {
     tss_df.eflags = 2;
     tss_df.cs = 0x08;
     tss_df.ss = tss_df.ds = tss_df.es = tss_df.fs = tss_df.gs = 0x10;
-    gdt_set_tss(3, &tss_main);
-    gdt_set_tss(4, &tss_df);
+    tss_main.ss0 = 0x10;
+    tss_main.esp0 = (uint32_t)ring0_stack + sizeof(ring0_stack);
+    gdt_set_tss(5, &tss_main);
+    gdt_set_tss(6, &tss_df);
 
     gdtp.limit = sizeof(gdt) - 1;
     gdtp.base = (uint32_t)gdt;
@@ -136,6 +142,16 @@ void idt_init(void) {
     idt[8].zero = 0;
     idt[8].flags = 0x85;
     idt[8].base_high = 0;
+    /* int 0x80 : appels systeme, appelable depuis le ring 3 (DPL 3) */
+    {
+        extern void isr_stub_128(void);
+        uint32_t base = (uint32_t)isr_stub_128;
+        idt[128].base_low = base & 0xFFFF;
+        idt[128].sel = 0x08;
+        idt[128].zero = 0;
+        idt[128].flags = 0xEE;
+        idt[128].base_high = base >> 16;
+    }
     pic_remap();
     idtp.limit = sizeof(idt) - 1;
     idtp.base = (uint32_t)idt;
@@ -190,6 +206,10 @@ static const char *const exc_names[32] = {
     "Réservé",
 };
 
+const char *exc_name(uint32_t n) {
+    return n < 32 ? exc_names[n] : "inconnue";
+}
+
 static void halt_forever(void) {
     for (;;) __asm__ volatile ("cli; hlt");
 }
@@ -235,7 +255,14 @@ static void exception(struct regs *r) {
 void isr_handler(struct regs *r) {
     uint32_t n = r->int_no;
 
+    if (n == 128) {
+        syscall_dispatch(r);
+        return;
+    }
+
     if (n < 32) {
+        if (r->cs & 3)
+            user_fault(r);              /* ne revient pas */
         if (handlers[n]) handlers[n](r);
         else exception(r);
         return;
@@ -256,4 +283,8 @@ void isr_handler(struct regs *r) {
     if (handlers[n]) handlers[n](r);
     if (n >= 40) outb(PIC2_CMD, 0x20);
     outb(PIC1_CMD, 0x20);
+
+    /* Ctrl+C : on ne tue que depuis le mode utilisateur (le noyau reste coherent) */
+    if ((r->cs & 3) && user_kill_pending())
+        user_abort(USER_KILLED);
 }

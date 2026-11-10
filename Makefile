@@ -13,12 +13,19 @@ CFLAGS := -m32 -std=gnu11 -O2 -Wall -Wextra -Ikernel \
 LDFLAGS := -m elf_i386 -T linker.ld -nostdlib -z noexecstack --build-id=none
 
 C_SRC := $(wildcard kernel/*.c)
-OBJS  := $(BUILD)/entry.o $(patsubst kernel/%.c,$(BUILD)/%.o,$(C_SRC))
+
+# Programmes du mode utilisateur : compiles a part, embarques dans le noyau
+USER_PROGS := bonjour moi lire noter noyau ecrase boucle saisie
+USER_OBJS  := $(patsubst %,$(BUILD)/user/%.bin.o,$(USER_PROGS))
+UCFLAGS := -m32 -std=gnu11 -O2 -Wall -Wextra -Iuser -ffreestanding -fno-pic -fno-pie \
+           -fno-stack-protector -fno-asynchronous-unwind-tables -mno-sse -mno-mmx -nostdlib
+
+OBJS  := $(BUILD)/entry.o $(patsubst kernel/%.c,$(BUILD)/%.o,$(C_SRC)) $(USER_OBJS)
 
 QEMU      := qemu-system-i386
-QEMU_DISK := -drive format=raw,file=$(BUILD)/lilos.img
+QEMU_DISK := -drive format=raw,file=$(BUILD)/lilos.img -nic user,model=rtl8139
 
-.PHONY: all run run-serial test-heap test-lib test-fs fuzz-shell test clean
+.PHONY: all run run-serial test-heap test-lib test-fs test-sha test-net fuzz-shell test clean
 
 all: $(BUILD)/lilos.img
 
@@ -30,6 +37,25 @@ $(BUILD)/entry.o: kernel/entry.asm | $(BUILD)
 
 $(BUILD)/%.o: kernel/%.c kernel/lilos.h | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/user:
+	mkdir -p $(BUILD)/user
+
+$(BUILD)/user/crt0.o: user/crt0.asm | $(BUILD)/user
+	$(AS) -f elf32 $< -o $@
+
+$(BUILD)/user/%.o: user/%.c user/ulib.h | $(BUILD)/user
+	$(CC) $(UCFLAGS) -c $< -o $@
+
+$(BUILD)/user/%.elf: $(BUILD)/user/crt0.o $(BUILD)/user/%.o user/user.ld
+	$(LD) -m elf_i386 -T user/user.ld -nostdlib -z noexecstack --build-id=none -o $@ $(BUILD)/user/crt0.o $(BUILD)/user/$*.o
+
+$(BUILD)/user/%.bin: $(BUILD)/user/%.elf
+	$(OBJCOPY) -O binary $< $@
+
+# le nom des symboles _binary_build_user_<prog>_bin_* vient du chemin relatif
+$(BUILD)/user/%.bin.o: $(BUILD)/user/%.bin
+	$(OBJCOPY) -I binary -O elf32-i386 -B i386 $< $@
 
 $(BUILD)/kernel.elf: $(OBJS) linker.ld
 	$(LD) $(LDFLAGS) -o $@ $(OBJS)
@@ -63,6 +89,14 @@ test-fs: | $(BUILD)
 	gcc -O1 -g -w -DHOST_TEST -Ikernel -fsanitize=address,undefined \
 		tests/fs_fuzz.c kernel/fs.c kernel/heap.c kernel/string.c -o $(BUILD)/fs_fuzz
 	$(BUILD)/fs_fuzz
+
+test-sha: | $(BUILD)
+	gcc -O1 -g -w -Ikernel -fsanitize=address,undefined tests/sha_test.c kernel/sha256.c kernel/string.c -o $(BUILD)/sha_test
+	$(BUILD)/sha_test
+
+test-net: | $(BUILD)
+	gcc -O1 -g -w -Ikernel -fsanitize=address,undefined tests/net_fuzz.c kernel/net.c kernel/string.c -o $(BUILD)/net_fuzz
+	$(BUILD)/net_fuzz
 
 fuzz-shell: all
 	python3 tests/shell_fuzz.py $(SEED) $(ROUNDS) $(BUILD)/lilos.img

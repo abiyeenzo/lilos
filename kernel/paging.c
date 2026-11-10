@@ -6,7 +6,8 @@
  *   donnees, pile, heap  lecture/ecriture, non executables
  *   page 0, garde pile   non mappees
  * CR0.WP est active : meme le kernel ne peut pas ecrire dans les pages en
- * lecture seule. Sans support NX du processeur, seule la partie ecriture
+ * lecture seule. Les pages du noyau ne sont jamais accessibles en ring 3
+ * (pas de bit U/S) : seules les pages des processus le sont. Sans support NX du processeur, seule la partie ecriture
  * s'applique. */
 
 #define PT_COUNT (RAM_MAP_END / (2u * 1024 * 1024))
@@ -23,6 +24,9 @@ static uint64_t page_tables[PT_COUNT][512] __attribute__((aligned(4096)));
 static int nx_on;
 
 int paging_nx_enabled(void) { return nx_on; }
+int paging_nx_on(void) { return nx_on; }
+uint32_t paging_kernel_pdpt(void) { return (uint32_t)pdpt; }
+uint32_t paging_kernel_pd(void) { return (uint32_t)page_dir; }
 
 static int has_cpuid_feature(uint32_t leaf, int reg, int bit) {
     uint32_t r[4];
@@ -74,6 +78,17 @@ void paging_init(void) {
         "mov %%eax, %%cr0\n"
         : : "r"((uint32_t)pdpt) : "eax", "memory");
     tss_set_cr3((uint32_t)pdpt);
+
+    /* SMEP : le noyau ne peut jamais executer une page utilisateur */
+    uint32_t r[4];
+    cpuid_leaf(0, r);
+    if (r[0] >= 7) {
+        cpuid_leaf(7, r);
+        if (r[1] & (1u << 7)) {
+            __asm__ volatile ("mov %%cr4, %0" : "=r"(cr4));
+            __asm__ volatile ("mov %0, %%cr4" : : "r"(cr4 | (1u << 20)));
+        }
+    }
 }
 
 /* Vrai si toutes les pages de [addr, addr+len) sont presentes. */

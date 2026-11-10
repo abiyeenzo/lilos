@@ -37,6 +37,13 @@ void *memcpy(void *dst, const void *src, size_t n) {
     return dst;
 }
 
+int memcmp(const void *a, const void *b, size_t n) {
+    const uint8_t *x = a, *y = b;
+    for (; n; n--, x++, y++)
+        if (*x != *y) return *x - *y;
+    return 0;
+}
+
 void *memmove(void *dst, const void *src, size_t n) {
     uint8_t *d = dst;
     const uint8_t *s = src;
@@ -81,4 +88,18 @@ int parse_int(const char *s, int32_t *out) {
     if (neg ? v > 0x80000000u : v > 0x7FFFFFFFu) return -1;
     *out = neg ? (int32_t)(0u - v) : (int32_t)v;
     return 0;
+}
+
+/* Encode un point de code Unicode en UTF-8 (jusqu'a 3 octets). */
+uint32_t utf8_encode(uint32_t cp, char *out) {
+    if (cp < 0x80) { out[0] = (char)cp; return 1; }
+    if (cp < 0x800) {
+        out[0] = (char)(0xC0 | (cp >> 6));
+        out[1] = (char)(0x80 | (cp & 0x3F));
+        return 2;
+    }
+    out[0] = (char)(0xE0 | (cp >> 12));
+    out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    out[2] = (char)(0x80 | (cp & 0x3F));
+    return 3;
 }

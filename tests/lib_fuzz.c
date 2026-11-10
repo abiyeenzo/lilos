@@ -13,6 +13,7 @@
 #define memset k_memset
 #define memcpy k_memcpy
 #define memmove k_memmove
+#define memcmp k_memcmp
 #include "../kernel/string.c"
 #undef strlen
 #undef strcmp
@@ -21,6 +22,7 @@
 #undef memset
 #undef memcpy
 #undef memmove
+#undef memcmp
 
 static char out[1 << 16];
 static size_t outn;
