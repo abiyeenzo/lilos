@@ -12,8 +12,23 @@ struct dt_ptr {
     uint32_t base;
 } __attribute__((packed));
 
-static struct gdt_entry gdt[3];
+static struct gdt_entry gdt[5];
 static struct dt_ptr gdtp;
+
+struct tss {
+    uint32_t link, esp0, ss0, esp1, ss1, esp2, ss2, cr3, eip, eflags;
+    uint32_t eax, ecx, edx, ebx, esp, ebp, esi, edi;
+    uint32_t es, cs, ss, ds, fs, gs, ldt;
+    uint16_t trap, iomap;
+} __attribute__((packed));
+
+#define SEL_TSS_MAIN 0x18
+#define SEL_TSS_DF   0x20
+
+static struct tss tss_main, tss_df;
+static uint8_t df_stack[4096] __attribute__((aligned(16)));
+
+static void double_fault_task(void);
 
 extern void gdt_flush(uint32_t);
 extern void idt_flush(uint32_t);
@@ -27,13 +42,41 @@ static void gdt_set(int i, uint8_t access) {
     gdt[i].base_high = 0;
 }
 
+static void gdt_set_tss(int i, struct tss *t) {
+    uint32_t base = (uint32_t)t;
+    gdt[i].limit_low = sizeof(*t) - 1;
+    gdt[i].base_low = base & 0xFFFF;
+    gdt[i].base_mid = (base >> 16) & 0xFF;
+    gdt[i].access = 0x89;
+    gdt[i].gran = 0x00;
+    gdt[i].base_high = base >> 24;
+}
+
+/* Le double fault s'execute dans sa propre tache avec sa propre pile :
+ * un debordement de pile affiche un diagnostic au lieu d'un triple fault. */
 void gdt_init(void) {
     memset(&gdt[0], 0, sizeof(gdt[0]));
     gdt_set(1, 0x9A);
     gdt_set(2, 0x92);
+
+    memset(&tss_main, 0, sizeof(tss_main));
+    memset(&tss_df, 0, sizeof(tss_df));
+    tss_df.eip = (uint32_t)double_fault_task;
+    tss_df.esp = (uint32_t)df_stack + sizeof(df_stack);
+    tss_df.eflags = 2;
+    tss_df.cs = 0x08;
+    tss_df.ss = tss_df.ds = tss_df.es = tss_df.fs = tss_df.gs = 0x10;
+    gdt_set_tss(3, &tss_main);
+    gdt_set_tss(4, &tss_df);
+
     gdtp.limit = sizeof(gdt) - 1;
     gdtp.base = (uint32_t)gdt;
     gdt_flush((uint32_t)&gdtp);
+    __asm__ volatile ("ltr %%ax" : : "a"(SEL_TSS_MAIN));
+}
+
+void tss_set_cr3(uint32_t cr3) {
+    tss_df.cr3 = cr3;
 }
 
 /* --- IDT --- */
@@ -87,6 +130,12 @@ void idt_init(void) {
         idt[i].flags = 0x8E;
         idt[i].base_high = base >> 16;
     }
+    /* vecteur 8 : task gate vers le TSS du double fault */
+    idt[8].base_low = 0;
+    idt[8].sel = SEL_TSS_DF;
+    idt[8].zero = 0;
+    idt[8].flags = 0x85;
+    idt[8].base_high = 0;
     pic_remap();
     idtp.limit = sizeof(idt) - 1;
     idtp.base = (uint32_t)idt;
@@ -126,6 +175,15 @@ void panic(const char *msg) {
     __asm__ volatile ("cli");
     vga_set_color(15, 4);
     kprintf("\n*** KERNEL PANIC: %s ***\n", msg);
+    halt_forever();
+}
+
+static void double_fault_task(void) {
+    uint32_t cr2;
+    __asm__ volatile ("mov %%cr2, %0" : "=r"(cr2));
+    vga_set_color(15, 4);
+    kprintf("\n*** DOUBLE FAULT ***\n");
+    kprintf("pile corrompue ou debordee ? dernier cr2=%08x\n", cr2);
     halt_forever();
 }
 

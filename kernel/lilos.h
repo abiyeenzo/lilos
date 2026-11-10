@@ -11,6 +11,8 @@
 #define HEAP_START   0x100000u
 #define HEAP_END     0x1000000u
 #define RAM_MAP_END  0x1000000u
+#define STACK_TOP    0x90000u
+#define STACK_GUARD  0x7F000u
 
 /* --- ports --- */
 static inline void outb(uint16_t port, uint8_t v) {
@@ -61,6 +63,7 @@ struct regs {
 typedef void (*isr_handler_t)(struct regs *);
 
 void gdt_init(void);
+void tss_set_cr3(uint32_t cr3);
 void idt_init(void);
 void irq_register(int irq, isr_handler_t h);
 void isr_register(int vector, isr_handler_t h);

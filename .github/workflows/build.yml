@@ -4,30 +4,30 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Dependances
         run: |
           sudo apt-get update
           sudo apt-get install -y nasm gcc-multilib qemu-system-x86
 
+      - name: Test de l'allocateur (hote, 32 bits)
+        run: make test-heap
+
       - name: Compilation
         run: make
 
-      - name: Demarrage dans QEMU
-        run: |
-          timeout 20 qemu-system-i386 \
-            -drive format=raw,file=build/lilos.img \
-            -display none -serial file:serial.log -no-reboot || true
-          cat serial.log
-          grep -q "LilOS pret" serial.log
-          ! grep -q "PANIC\|EXCEPTION" serial.log
+      - name: Tests dans QEMU (clavier et serie)
+        run: python3 tests/qemu_test.py build/lilos.img
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         continue-on-error: true
         with:
           name: lilos-img

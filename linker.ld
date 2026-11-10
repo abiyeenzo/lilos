@@ -26,6 +26,7 @@ SECTIONS
     }
 
     _end = .;
+    ASSERT(_end <= 0x7F000, "kernel trop gros : il recouvre la pile")
 
     /DISCARD/ : {
         *(.comment)

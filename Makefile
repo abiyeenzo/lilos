@@ -16,7 +16,7 @@ OBJS  := $(BUILD)/entry.o $(patsubst kernel/%.c,$(BUILD)/%.o,$(C_SRC))
 QEMU      := qemu-system-i386
 QEMU_DISK := -drive format=raw,file=$(BUILD)/lilos.img
 
-.PHONY: all run run-serial clean
+.PHONY: all run run-serial test-heap test clean
 
 all: $(BUILD)/lilos.img
 
@@ -47,6 +47,14 @@ run: $(BUILD)/lilos.img
 
 run-serial: $(BUILD)/lilos.img
 	$(QEMU) $(QEMU_DISK) -display none -serial stdio
+
+test-heap: | $(BUILD)
+	$(CC) -m32 -O1 -g -DHOST_TEST -Ikernel -fsanitize=undefined \
+		tests/heap_fuzz.c kernel/heap.c kernel/string.c -o $(BUILD)/heap_fuzz
+	$(BUILD)/heap_fuzz
+
+test: all
+	python3 tests/qemu_test.py $(BUILD)/lilos.img
 
 clean:
 	rm -rf $(BUILD)

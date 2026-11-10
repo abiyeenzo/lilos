@@ -209,7 +209,7 @@ static void cmd_hexdump(int argc, char **argv) {
 
 static void cmd_memtest(int argc, char **argv) {
     (void)argc; (void)argv;
-    void *p[32];
+    void *p[32] = { NULL };
     int ok = 1;
 
     for (int i = 0; i < 32; i++) {
@@ -222,6 +222,7 @@ static void cmd_memtest(int argc, char **argv) {
         for (int j = 0; j < 64 + i * 32; j++)
             if (b[j] != i) { ok = 0; break; }
     }
+    if (kmalloc(0xFFFFFFFFu) || kmalloc(HEAP_END) || kmalloc(0)) ok = 0;
     for (int i = 0; i < 32; i += 2) kfree(p[i]);
     for (int i = 1; i < 32; i += 2) kfree(p[i]);
 
@@ -262,6 +263,25 @@ static void cmd_panic(int argc, char **argv) {
     panic("declenche depuis le shell");
 }
 
+#pragma GCC diagnostic ignored "-Winfinite-recursion"
+static int recurse(int n) {
+    volatile char pad[512];
+    pad[0] = (char)n;
+    return recurse(n + 1) + pad[0];
+}
+
+static void cmd_stacktest(int argc, char **argv) {
+    (void)argc; (void)argv;
+    kputs("debordement de pile volontaire...\n");
+    kprintf("%d\n", recurse(0));
+}
+
+static void cmd_nulltest(int argc, char **argv) {
+    (void)argc; (void)argv;
+    kputs("lecture a l'adresse 0...\n");
+    kprintf("%u\n", *(volatile uint32_t *)0);
+}
+
 static const struct command commands[] = {
     { "help",    "liste les commandes",                  cmd_help },
     { "clear",   "efface l'ecran (Ctrl+L)",              cmd_clear },
@@ -279,6 +299,8 @@ static const struct command commands[] = {
     { "reboot",  "redemarre",                            cmd_reboot },
     { "halt",    "eteint (QEMU) ou arrete le CPU",       cmd_halt },
     { "panic",   "provoque un kernel panic",             cmd_panic },
+    { "nulltest",  "lit l'adresse 0 (page fault attendu)", cmd_nulltest },
+    { "stacktest", "deborde la pile (double fault attendu)", cmd_stacktest },
     { NULL, NULL, NULL }
 };
 
