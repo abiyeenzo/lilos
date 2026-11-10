@@ -7,7 +7,7 @@ BUILD := build
 
 CFLAGS := -m32 -std=gnu11 -O2 -Wall -Wextra -Ikernel \
           -ffreestanding -fno-pic -fno-pie -fno-stack-protector \
-          -fno-asynchronous-unwind-tables -mno-sse -mno-mmx -nostdlib
+          -fno-asynchronous-unwind-tables -fstack-clash-protection -mno-sse -mno-mmx -nostdlib
 LDFLAGS := -m elf_i386 -T linker.ld -nostdlib -z noexecstack --build-id=none
 
 C_SRC := $(wildcard kernel/*.c)

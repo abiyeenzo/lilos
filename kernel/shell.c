@@ -262,7 +262,7 @@ static void cmd_panic(int argc, char **argv) {
 
 #pragma GCC diagnostic ignored "-Winfinite-recursion"
 static int recurse(int n) {
-    volatile char pad[512];
+    volatile char pad[8192];   /* plus grand qu'une page : teste stack-clash */
     pad[0] = (char)n;
     return recurse(n + 1) + pad[0];
 }
