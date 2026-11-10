@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Poser une question ou partager une idee
+    url: https://github.com/abiyeenzo/lilos/discussions
+    about: Les questions et les discussions ouvertes vont dans les Discussions.
+  - name: Signaler une faille de securite
+    url: https://github.com/abiyeenzo/lilos/security/advisories/new
+    about: Ne publiez pas de faille dans un ticket. Utilisez ce formulaire prive.

@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LilOS - un système d'exploitation écrit de zéro, en français</title>
+  <meta name="description" content="LilOS est un système d'exploitation x86 32 bits open source : noyau en C, mode utilisateur, multi-utilisateur, réseau et shell en français. Essayez-le dans votre navigateur.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.github.com; base-uri 'none'; form-action 'none'">
+  <meta property="og:title" content="LilOS - un système d'exploitation écrit de zéro, en français">
+  <meta property="og:description" content="Noyau, mode utilisateur, comptes, réseau et shell en français. Open source. Essayez-le dans le navigateur.">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#0b0f14">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#contenu">Aller au contenu</a>
+
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="./" aria-label="LilOS, accueil">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="currentColor" opacity="0.14"/><path d="M8 10l7 6-7 6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 23h8" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+        LilOS
+      </a>
+      <nav class="nav" aria-label="Navigation principale">
+        <a href="#demo">Démo</a>
+        <a href="#fonctions">Fonctions</a>
+        <a href="#telecharger">Télécharger</a>
+        <a href="#mise-a-jour">Mises à jour</a>
+        <a href="docs.html">Docs</a>
+        <a href="#communaute">Communauté</a>
+        <a href="https://github.com/abiyeenzo/lilos" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="contenu">
+    <div class="hero">
+      <div class="wrap">
+        <div>
+          <p class="eyebrow">open source, licence MIT</p>
+          <h1>Un système d'exploitation écrit de zéro, en français.</h1>
+          <p class="lead">Un bootloader, un noyau en C, des processus isolés, des comptes, un réseau et un shell. Assez petit pour être lu en entier, assez complet pour être pris au sérieux. Venez l'apprendre, le casser et l'améliorer avec nous.</p>
+          <div class="cta">
+            <a class="btn primary" href="#demo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3l14 9-14 9z"/></svg>
+              Essayer dans le navigateur
+            </a>
+            <a class="btn" href="#telecharger">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg>
+              Télécharger
+            </a>
+            <a class="btn" href="https://github.com/abiyeenzo/lilos" rel="noopener">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
+              Code source
+            </a>
+          </div>
+          <div class="badges">
+            <span class="badge">x86 32 bits</span>
+            <span class="badge">noyau en C</span>
+            <span class="badge">ring 3</span>
+            <span class="badge">AZERTY</span>
+            <span class="badge">releases signées</span>
+          </div>
+        </div>
+
+        <div class="terminal" role="img" aria-label="Exemple de session LilOS dans un terminal">
+          <div class="bar"><span></span><span></span><span></span></div>
+<pre><span class="t-ok">[ ok ]</span> GDT
+<span class="t-ok">[ ok ]</span> IDT et PIC (IRQ 32-47)
+<span class="t-ok">[ ok ]</span> paging (32 Mo, W^X, NX)
+<span class="t-ok">[ ok ]</span> réseau RTL8139
+
+LilOS prêt. Tapez aide.
+
+<span class="t-root">root#</span> ecrire notes.txt café à côté
+<span class="t-root">root#</span> droits notes.txt 60
+<span class="t-root">root#</span> lancer noyau
+<span class="t-dim">lecture de la memoire du noyau...</span>
+<span class="t-warn">processus noyau (pid 3) tué : Défaut de page</span>
+<span class="t-root">root#</span> ping 10.0.2.2
+<span class="t-ok">réponse de 10.0.2.2 : temps=10 ms</span>
+<span class="t-root">root#</span> </pre>
+        </div>
+      </div>
+    </div>
+
+    <section id="demo">
+      <div class="wrap">
+        <h2>Essayez-le maintenant</h2>
+        <p class="sub">LilOS démarre dans votre navigateur, sans rien installer. C'est la vraie image du système, exécutée par un émulateur x86.</p>
+
+        <div class="demo-box">
+          <div class="demo-toolbar">
+            <button class="btn primary small" id="demo-start" type="button">Démarrer LilOS</button>
+            <button class="btn small" id="demo-reset" type="button" disabled>Redémarrer</button>
+            <button class="btn small" id="demo-full" type="button" disabled>Plein écran</button>
+            <span class="status" id="demo-status" role="status" aria-live="polite">arrêté</span>
+          </div>
+          <div id="demo-placeholder" class="demo-placeholder">
+            <p><strong>Cliquez sur Démarrer</strong> pour charger l'émulateur (environ 2,5 Mo).</p>
+            <p>Au premier démarrage, créez un mot de passe pour <code>root</code> (6 caractères minimum), puis un compte, puis connectez-vous. Tapez <code>aide</code> pour voir les commandes.</p>
+          </div>
+          <div id="screen_container" tabindex="0" aria-label="Écran de LilOS : cliquez pour taper au clavier">
+            <div style="white-space: pre; font: 14px monospace; line-height: 14px;"></div>
+            <canvas style="display: none"></canvas>
+          </div>
+          <div class="demo-notes">
+            Pour taper dans la démo, cliquez sur l'écran. Cliquez ailleurs pour rendre le clavier à la page.
+            <ul>
+              <li>Le clavier de LilOS est un <strong>AZERTY</strong> : sur un clavier QWERTY, les lettres seront décalées (la touche A donnera Q).</li>
+              <li>Pas de réseau dans la démo : <code>ping</code> et <code>dns</code> demandent la version à télécharger avec QEMU.</li>
+              <li>Essayez <code>lancer noyau</code> (un programme qui tente de lire le noyau est tué), <code>lancer bonjour</code> ou <code>calculer 6 * 7</code>.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="fonctions">
+      <div class="wrap">
+        <h2>Ce que contient LilOS</h2>
+        <p class="sub">Un système complet, de la première instruction du bootloader jusqu'au shell. Tout est dans le dépôt, tout est testé.</p>
+
+        <div class="grid">
+          <article class="card">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg>
+            <h3>Un vrai noyau</h3>
+            <p>Bootloader BIOS, GDT, IDT, timer, clavier AZERTY, VGA avec accents, paging PAE, allocateur vérifié, système de fichiers en RAM.</p>
+          </article>
+          <article class="card">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+            <h3>Processus isolés</h3>
+            <p>Les programmes tournent en ring 3, dans leur propre espace d'adressage, avec des appels système validés. Un programme qui touche au noyau est tué, le système continue.</p>
+          </article>
+          <article class="card">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.5-4 3-6 6.5-6s6 2 6.5 6"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 14c3 0 4.5 1.8 5 4.5"/></svg>
+            <h3>Multi-utilisateur</h3>
+            <p>Comptes, mots de passe salés, droits sur les fichiers, <code>su</code>, et des commandes d'administration réservées à root.</p>
+          </article>
+          <article class="card">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>
+            <h3>Un réseau</h3>
+            <p>Pilote RTL8139, ARP, IPv4, ICMP, UDP et client DNS. Chaque paquet reçu est considéré comme hostile.</p>
+          </article>
+          <article class="card">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>
+            <h3>Pensé pour la sécurité</h3>
+            <p>W^X, NX, SMEP, pile gardée, ports d'E/S interdits au ring 3. Des tests d'attaque en continu ont déjà trouvé et fait corriger de vraies failles.</p>
+          </article>
+          <article class="card">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v6l-5 9a2 2 0 001.8 3h10.4A2 2 0 0019 18l-5-9V3"/><path d="M7.5 14h9"/></svg>
+            <h3>Testé sans pitié</h3>
+            <p>Fuzzers, 51 attaques depuis le mode utilisateur, paquets hostiles envoyés à la machine virtuelle, touches aléatoires dans le shell. La CI lance tout à chaque push.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="telecharger">
+      <div class="wrap">
+        <h2>Télécharger</h2>
+        <p class="sub">Une image disque brute, à lancer dans QEMU ou sur une machine en mode BIOS. Chaque version est signée et accompagnée de ses empreintes.</p>
+
+        <div class="card" id="release">
+          <p class="t-dim" id="release-loading">Recherche de la dernière version...</p>
+        </div>
+
+        <h3 style="margin-top: 28px;">Lancer l'image</h3>
+        <pre class="code"><code>qemu-system-i386 -drive format=raw,file=lilos.img -nic user,model=rtl8139</code></pre>
+        <p class="t-dim" style="margin: 0;">Il faut au moins 32 Mo de RAM. Le réseau demande une carte RTL8139 (option <code>-nic</code> ci-dessus).</p>
+
+        <h3 style="margin-top: 28px;">Vérifier ce que vous avez téléchargé</h3>
+        <pre class="code"><code>sha256sum -c SHA256SUMS
+openssl pkeyutl -verify -pubin -inkey lilos-release.pub.pem \
+  -rawin -in lilos.img -sigfile lilos.img.sig
+gh attestation verify lilos.img --repo abiyeenzo/lilos</code></pre>
+        <p class="t-dim" style="margin: 0;">La clé publique de signature est aussi disponible ici : <a href="lilos-release.pub.pem">lilos-release.pub.pem</a>.</p>
+      </div>
+    </section>
+
+    <section id="mise-a-jour">
+      <div class="wrap">
+        <h2>Des mises à jour fiables</h2>
+        <p class="sub">Une mise à jour est du code qui s'exécute avec tous les droits : elle doit être impossible à falsifier.</p>
+
+        <div class="grid">
+          <article class="card">
+            <h3>Aujourd'hui : releases automatiques</h3>
+            <ul>
+              <li>Un tag <code>vX.Y.Z</code> déclenche la construction, les tests, la signature et la publication.</li>
+              <li>Signature Ed25519, avec une clé qui n'existe que dans un environnement protégé et demande l'approbation du mainteneur.</li>
+              <li>Attestation de provenance : on peut prouver quel code a produit quelle image.</li>
+              <li>Le site se reconstruit tout seul.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Demain : la mise à jour dans LilOS</h3>
+            <p>LilOS téléchargera sa propre mise à jour, en vérifiera la signature, l'écrira sur un second emplacement, puis redémarrera dessus avec retour arrière automatique. Il manque encore DHCP, TCP, HTTP, Ed25519 dans le noyau et un pilote disque.</p>
+            <p style="margin-top: 10px;"><a href="https://github.com/abiyeenzo/lilos/blob/main/ROADMAP.md">Voir la feuille de route</a></p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="communaute">
+      <div class="wrap">
+        <h2>Construisons-le ensemble</h2>
+        <p class="sub">LilOS est un projet communautaire. Pas besoin d'avoir déjà écrit un noyau : on apprend en lisant, en cassant et en réparant.</p>
+
+        <div class="grid">
+          <article class="card">
+            <h3>Contribuer</h3>
+            <p>Des tickets « bon premier ticket » sont prêts à être pris, avec une piste pour démarrer.</p>
+            <p style="margin-top: 10px;"><a href="https://github.com/abiyeenzo/lilos/labels/good%20first%20issue">Premiers tickets</a> · <a href="https://github.com/abiyeenzo/lilos/blob/main/CONTRIBUTING.md">Guide de contribution</a></p>
+          </article>
+          <article class="card">
+            <h3>Discuter</h3>
+            <p>Une question, une idée, une démo à montrer ? Les discussions sont ouvertes à tous, débutants compris.</p>
+            <p style="margin-top: 10px;"><a href="https://github.com/abiyeenzo/lilos/discussions">Ouvrir les discussions</a></p>
+          </article>
+          <article class="card">
+            <h3>Chercher des failles</h3>
+            <p>Un système qui parle de sécurité doit être attaqué. Trouvez une faille et signalez-la en privé : vous serez crédité.</p>
+            <p style="margin-top: 10px;"><a href="https://github.com/abiyeenzo/lilos/security/advisories/new">Signaler une faille</a> · <a href="https://github.com/abiyeenzo/lilos/blob/main/SECURITY.md">Politique de sécurité</a></p>
+          </article>
+          <article class="card">
+            <h3>Où va le projet</h3>
+            <p>La feuille de route est publique. Chaque ligne devient un ticket que chacun peut prendre.</p>
+            <p style="margin-top: 10px;"><a href="https://github.com/abiyeenzo/lilos/blob/main/ROADMAP.md">Feuille de route</a></p>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div>LilOS, licence MIT. Fait avec patience, en français.</div>
+      <ul>
+        <li><a href="docs.html">Documentation</a></li>
+        <li><a href="https://github.com/abiyeenzo/lilos" rel="noopener">GitHub</a></li>
+        <li><a href="https://github.com/abiyeenzo/lilos/blob/main/CODE_OF_CONDUCT.md">Code de conduite</a></li>
+        <li><a href="demo/LICENSE-v86.txt">Émulateur v86 (BSD)</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

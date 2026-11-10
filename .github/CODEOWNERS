@@ -1,0 +1,11 @@
+# Les zones sensibles demandent une relecture du mainteneur.
+*                         @abiyeenzo
+/kernel/user.c            @abiyeenzo
+/kernel/interrupts.c      @abiyeenzo
+/kernel/paging.c          @abiyeenzo
+/kernel/net.c             @abiyeenzo
+/kernel/rtl8139.c         @abiyeenzo
+/kernel/users.c           @abiyeenzo
+/kernel/sha256.c          @abiyeenzo
+/release/                 @abiyeenzo
+/.github/workflows/       @abiyeenzo

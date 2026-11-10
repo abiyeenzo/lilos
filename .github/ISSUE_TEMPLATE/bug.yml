@@ -1,0 +1,57 @@
+name: Signaler un bug
+description: Quelque chose ne marche pas comme prévu
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de prendre le temps de décrire le problème. S'il s'agit d'une faille de sécurité, n'ouvrez pas de ticket : utilisez le formulaire privé de [SECURITY.md](../blob/main/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Résultat de la commande `version`, ou le commit.
+      placeholder: "LilOS 0.3.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: environnement
+    attributes:
+      label: Où l'avez-vous lancé ?
+      options:
+        - QEMU
+        - Démo dans le navigateur
+        - Machine réelle (BIOS)
+        - Autre émulateur
+    validations:
+      required: true
+  - type: textarea
+    id: etapes
+    attributes:
+      label: Étapes pour reproduire
+      description: Les commandes tapées, dans l'ordre.
+      placeholder: |
+        1. Connexion en root
+        2. `ecrire a.txt bonjour`
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: attendu
+    attributes:
+      label: Comportement attendu
+    validations:
+      required: true
+  - type: textarea
+    id: observe
+    attributes:
+      label: Comportement observé
+      description: Copiez le texte affiché (ou la sortie série avec `make run-serial`).
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: contexte
+    attributes:
+      label: Contexte
+      description: Ligne de commande QEMU, processeur (`cpuid`), tout ce qui peut aider.

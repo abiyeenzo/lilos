@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdarg.h>
 
-#define LILOS_VERSION "0.2.0"
+#define LILOS_VERSION "0.3.0"
 
 #define TIMER_HZ     100
 #define HEAP_START   0x100000u

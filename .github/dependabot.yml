@@ -1,0 +1,9 @@
+version: 2
+updates:
+  # Met a jour les actions epinglees par SHA
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"

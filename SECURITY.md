@@ -37,4 +37,17 @@ LilOS est un système d'exploitation pédagogique. Il n'a pas été audité et n
 
 ## Signaler une faille
 
-Ouvrez une issue ou écrivez en privé au propriétaire du dépôt avec les étapes pour reproduire. Merci de ne pas publier de preuve de concept avant correction.
+Utilisez le signalement privé de GitHub : [ouvrir un avis de sécurité](https://github.com/abiyeenzo/lilos/security/advisories/new). Il n'est visible que de vous et des mainteneurs.
+
+Indiquez la version (`version`), les étapes pour reproduire et l'impact que vous constatez. Une preuve de concept qui tourne dans QEMU est idéale. Merci de ne rien publier avant la correction : nous visons une réponse sous 7 jours et nous vous créditerons dans l'avis publié, si vous le souhaitez.
+
+Les failles trouvées sans autorisation sur des systèmes tiers ne sont pas concernées par ce dépôt.
+
+## Releases signées
+
+Chaque release est signée par une clé Ed25519 dont la partie publique est dans [`release/lilos-release.pub.pem`](release/lilos-release.pub.pem). La clé privée n'existe que dans un environnement GitHub protégé, qui exige l'approbation du mainteneur à chaque publication. Les releases portent aussi une attestation de provenance.
+
+```
+openssl pkeyutl -verify -pubin -inkey lilos-release.pub.pem -rawin -in lilos.img -sigfile lilos.img.sig
+gh attestation verify lilos.img --repo abiyeenzo/lilos
+```

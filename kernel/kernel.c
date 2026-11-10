@@ -38,7 +38,7 @@ void kmain(void) {
     keyboard_init();
     ok("clavier PS/2 (AZERTY)");
     paging_init();
-    ok("paging (16 Mo, page 0 protégée)");
+    ok("paging PAE (32 Mo, W^X, NX, page 0 protégée)");
     heap_init(HEAP_START, HEAP_END);
     if (!heap_selftest())
         panic("autotest du heap en échec");

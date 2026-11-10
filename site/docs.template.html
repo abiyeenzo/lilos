@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Documentation - LilOS</title>
+  <meta name="description" content="Documentation de LilOS : démarrage, commandes, comptes et droits, programmes utilisateur, réseau, architecture et sécurité.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+  <meta name="theme-color" content="#0b0f14">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#contenu">Aller au contenu</a>
+
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="./" aria-label="LilOS, accueil">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="currentColor" opacity="0.14"/><path d="M8 10l7 6-7 6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 23h8" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+        LilOS
+      </a>
+      <nav class="nav" aria-label="Navigation principale">
+        <a href="./#demo">Démo</a>
+        <a href="./#telecharger">Télécharger</a>
+        <a href="docs.html" aria-current="page">Docs</a>
+        <a href="./#communaute">Communauté</a>
+        <a href="https://github.com/abiyeenzo/lilos" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="wrap doc" id="contenu">
+    <aside class="toc" aria-label="Sommaire">
+      <ul>
+        <li><a href="#demarrage">Démarrage rapide</a></li>
+        <li><a href="#commandes">Commandes</a></li>
+        <li><a href="#comptes">Comptes et droits</a></li>
+        <li><a href="#programmes">Programmes utilisateur</a></li>
+        <li><a href="#reseau">Réseau</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#securite">Sécurité</a></li>
+        <li><a href="#verifier">Vérifier une release</a></li>
+        <li><a href="#tests">Tests</a></li>
+      </ul>
+    </aside>
+
+    <article>
+      <section id="demarrage">
+        <h2>Démarrage rapide</h2>
+        <p>Dépendances : <code>nasm</code>, <code>gcc</code> avec le support 32 bits (<code>gcc-multilib</code>), <code>binutils</code>, <code>qemu-system-x86</code>, <code>python3</code>, <code>openssl</code>.</p>
+        <pre class="code"><code>git clone https://github.com/abiyeenzo/lilos
+cd lilos
+make            # construit build/lilos.img
+make run        # lance dans QEMU, réseau RTL8139 inclus</code></pre>
+        <p>Au premier démarrage, LilOS demande le mot de passe de <code>root</code>, puis crée un compte utilisateur. Les comptes et les fichiers vivent en RAM : tout est recréé à chaque démarrage. Il faut au moins 32 Mo de RAM.</p>
+        <p>Essayez :</p>
+        <pre class="code"><code>aide
+ecrire notes.txt café à côté
+afficher notes.txt
+calculer 6 * 7
+lancer bonjour</code></pre>
+      </section>
+
+      <section id="commandes">
+        <h2>Commandes</h2>
+        <p>Les noms sont en français. Les anciens noms anglais sont toujours acceptés comme alias. <code>aide &lt;commande&gt;</code> donne le détail dans LilOS. Les commandes marquées <span class="tag-root">root</span> sont réservées à l'administrateur.</p>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Commande</th><th>Alias</th><th>Description</th></tr></thead>
+            <tbody>
+@@COMMANDES@@
+            </tbody>
+          </table>
+        </div>
+        <p>Raccourcis : flèches haut et bas pour l'historique, <kbd>Ctrl</kbd>+<kbd>L</kbd> pour effacer l'écran, <kbd>Ctrl</kbd>+<kbd>C</kbd> pour interrompre un programme.</p>
+      </section>
+
+      <section id="comptes">
+        <h2>Comptes et droits</h2>
+        <p>Chaque session a un utilisateur. <code>root</code> (uid 0) peut tout faire. Les autres comptes ne peuvent ni lire la mémoire du noyau, ni créer de comptes, ni éteindre la machine.</p>
+        <p>Chaque fichier a un propriétaire et des droits pour lui et pour les autres : <code>4</code> pour la lecture, <code>2</code> pour l'écriture. <code>droits notes.txt 64</code> donne lecture et écriture au propriétaire et lecture aux autres (le réglage par défaut). <code>droits notes.txt 60</code> interdit tout aux autres.</p>
+        <p>Les mots de passe ne sont jamais stockés : on garde un sel aléatoire et un SHA-256 itéré. Après un échec de connexion, une temporisation freine le force brut.</p>
+      </section>
+
+      <section id="programmes">
+        <h2>Programmes utilisateur</h2>
+        <p>Les programmes tournent en ring 3, dans leur propre espace d'adressage (<code>0x40000000</code> à <code>0x40100000</code>). Ils parlent au noyau par <code>int 0x80</code> : écrire, lire une ligne, lire et écrire un fichier (avec les droits de l'utilisateur), dormir, obtenir son uid.</p>
+        <p><code>programmes</code> les liste, <code>lancer &lt;nom&gt; [arguments]</code> en exécute un. Quelques exemples :</p>
+        <pre class="code"><code>lancer moi un deux      # uid, pid et arguments
+lancer noter a.txt salut
+lancer lire a.txt
+lancer noyau            # tente de lire le noyau : le processus est tué
+lancer boucle           # boucle infinie : Ctrl+C l'arrête</code></pre>
+        <p>Pour écrire le vôtre : copiez <code>user/bonjour.c</code>, ajoutez le nom à <code>USER_PROGS</code> dans le <code>Makefile</code> et à <code>kernel/programs.c</code>. Voir le <a href="https://github.com/abiyeenzo/lilos/blob/main/CONTRIBUTING.md">guide de contribution</a>.</p>
+      </section>
+
+      <section id="reseau">
+        <h2>Réseau</h2>
+        <p>LilOS pilote la carte RTL8139 (celle que QEMU émule avec <code>-nic user,model=rtl8139</code>) et parle ARP, IPv4, ICMP, UDP et DNS. Il n'y a pas encore de TCP.</p>
+        <pre class="code"><code>reseau            # état de la carte, MAC, adresse
+ping 10.0.2.2     # la passerelle de QEMU
+dns example.com   # résolution de nom
+arp               # cache ARP</code></pre>
+        <p>L'adresse par défaut est celle du réseau utilisateur de QEMU (10.0.2.15, passerelle 10.0.2.2, DNS 10.0.2.3). Root peut la changer avec <code>reseau config &lt;ip&gt; &lt;passerelle&gt; &lt;dns&gt;</code>.</p>
+      </section>
+
+      <section id="architecture">
+        <h2>Architecture</h2>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Adresse physique</th><th>Contenu</th></tr></thead>
+            <tbody>
+              <tr><td>0x7C00</td><td>secteur de boot</td></tr>
+              <tr><td>0x10000</td><td>noyau (code, données, BSS)</td></tr>
+              <tr><td>0x90000</td><td>sommet de la pile du noyau</td></tr>
+              <tr><td>0x100000 - 0x1000000</td><td>heap du noyau</td></tr>
+              <tr><td>0x1000000 - 0x2000000</td><td>pages des processus</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Les processus voient leur propre fenêtre à <code>0x40000000</code>. Le noyau n'y est jamais accessible.</p>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Dossier</th><th>Rôle</th></tr></thead>
+            <tbody>
+              <tr><td>bootloader/</td><td>charge le noyau par LBA, active A20, passe en mode protégé</td></tr>
+              <tr><td>kernel/</td><td>interruptions, paging, heap, fichiers, comptes, processus, réseau, shell</td></tr>
+              <tr><td>user/</td><td>programmes du mode utilisateur et leur bibliothèque</td></tr>
+              <tr><td>tests/</td><td>tests hôte, fuzzers, tests QEMU et tests d'attaque</td></tr>
+              <tr><td>site/</td><td>ce site</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="securite">
+        <h2>Sécurité</h2>
+        <p>Le modèle de menace, les protections et les limites connues sont décrits dans <a href="https://github.com/abiyeenzo/lilos/blob/main/SECURITY.md">SECURITY.md</a>. En résumé : isolation des processus, W^X, NX, SMEP, ports d'E/S interdits au ring 3, heap vérifié, pile gardée, pile réseau défensive, comptes salés.</p>
+        <p>Le dépôt est attaqué en continu par ses propres tests. Ils ont déjà trouvé de vraies failles, par exemple l'accès aux ports matériels depuis un processus non privilégié, qui permettait d'espionner le clavier. Pour signaler une faille, utilisez le <a href="https://github.com/abiyeenzo/lilos/security/advisories/new">signalement privé</a>.</p>
+      </section>
+
+      <section id="verifier">
+        <h2>Vérifier une release</h2>
+        <p>Chaque release contient l'image, sa signature Ed25519, les empreintes SHA-256 et la clé publique. La clé privée n'existe que dans un environnement GitHub protégé.</p>
+        <pre class="code"><code>sha256sum -c SHA256SUMS
+openssl pkeyutl -verify -pubin -inkey lilos-release.pub.pem \
+  -rawin -in lilos.img -sigfile lilos.img.sig
+gh attestation verify lilos.img --repo abiyeenzo/lilos</code></pre>
+        <p>La première commande vérifie l'intégrité, la deuxième que le projet a bien signé l'image, la troisième qu'elle a été construite par le dépôt (provenance).</p>
+      </section>
+
+      <section id="tests">
+        <h2>Tests</h2>
+        <pre class="code"><code>make test-heap test-lib test-fs test-sha test-net   # tests hôte, ASan et UBSan
+make test                                           # QEMU : clavier, comptes, ring 3, réseau
+make test-attack                                    # 51 attaques depuis le mode utilisateur
+make test-netattack                                 # paquets hostiles envoyés à la VM
+make fuzz-shell SEED=1 ROUNDS=100                   # touches aléatoires dans le shell</code></pre>
+        <p>Les tests QEMU tapent de vraies touches AZERTY et lisent la sortie série. La CI lance tout à chaque push.</p>
+      </section>
+    </article>
+  </div>
+
+  <footer>
+    <div class="wrap">
+      <div>LilOS, licence MIT.</div>
+      <ul>
+        <li><a href="./">Accueil</a></li>
+        <li><a href="https://github.com/abiyeenzo/lilos" rel="noopener">GitHub</a></li>
+        <li><a href="https://github.com/abiyeenzo/lilos/blob/main/CONTRIBUTING.md">Contribuer</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>

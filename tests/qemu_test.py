@@ -53,7 +53,7 @@ def fresh(cpu, cmd, pattern, timeout=15):
 
 vm = boot()
 assert "PANIC" not in vm.text() and "EXCEPTION" not in vm.text()
-check(vm, "version", r"LilOS 0\.2\.0 \(x86")
+check(vm, "version", r"LilOS 0\.3\.0 \(x86")
 check(vm, "echo salut a tous", r"\nsalut a tous\r?\n")
 check(vm, "memtest", r"memtest : OK")
 check(vm, "aide", r"ecrire[\s\S]*calculer")

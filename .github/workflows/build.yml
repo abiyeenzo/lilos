@@ -18,6 +18,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y nasm gcc-multilib qemu-system-x86
 
+      - name: La documentation du site est a jour
+        run: |
+          python3 site/gen-docs.py
+          git diff --exit-code -- site/docs.html || { echo "relancez python3 site/gen-docs.py et commitez site/docs.html"; exit 1; }
+
       - name: Test de l'allocateur (hote, 32 bits)
         run: make test-heap
 
