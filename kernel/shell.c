@@ -326,10 +326,16 @@ static void print_ip(uint32_t ip) {
 
 static void cmd_net(int argc, char **argv) {
     if (argc > 1) {
+        if (!strcmp(argv[1], "dhcp")) {
+            if (UID() != 0) { kputs("permission refusée\n"); return; }
+            kputs("configuration DHCP en cours...\n");
+            net_dhcp_start();
+            return;
+        }
         uint32_t ip, gw, dns, mask = IP4(255, 255, 255, 0);
         if (strcmp(argv[1], "config") || argc != 5 || parse_ip(argv[2], &ip) ||
             parse_ip(argv[3], &gw) || parse_ip(argv[4], &dns)) {
-            kputs("usage : reseau [config <ip> <passerelle> <dns>]\n");
+            kputs("usage : reseau [config <ip> <passerelle> <dns> | dhcp]\n");
             return;
         }
         if (UID() != 0) { kputs("permission refusée\n"); return; }
@@ -712,7 +718,7 @@ static const struct command commands[] = {
     { "proprietaire", "chown", "change le propriétaire : proprietaire <f> <nom>", cmd_chown, 1 },
     { "programmes", "programs", "liste les programmes utilisateur", cmd_programs, 0 },
     { "lancer", "run", "lance un programme en mode utilisateur : lancer <nom> [args]", cmd_run, 0 },
-    { "reseau", "net", "état du réseau : reseau [config <ip> <passerelle> <dns>]", cmd_net, 0 },
+    { "reseau", "net", "état du réseau : reseau [config ... | dhcp]", cmd_net, 0 },
     { "ping", NULL, "ping <adresse ou nom>", cmd_ping, 0 },
     { "dns", "resoudre", "résout un nom : dns <nom>", cmd_dns, 0 },
     { "arp", NULL, "affiche le cache ARP", cmd_arp, 0 },
