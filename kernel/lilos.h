@@ -222,3 +222,59 @@ uint32_t users_login(void);
 void shell_run(uint32_t uid);
 
 #endif
+
+// DHCP related definitions
+#define DHCP_SERVER_PORT    67
+#define DHCP_CLIENT_PORT    68
+
+#define DHCP_DISCOVER       1
+#define DHCP_OFFER          2
+#define DHCP_REQUEST        3
+#define DHCP_ACK            5
+#define DHCP_MAGIC_COOKIE   0x63825363
+#define DHCP_NAK            6
+
+// DHCP option codes
+#define DHCP_OPT_SUBNET_MASK     1
+#define DHCP_OPT_ROUTER          3
+#define DHCP_OPT_DNS_SERVER      6
+#define DHCP_OPT_REQ_IP          50
+#define DHCP_OPT_LEASE_TIME      51
+#define DHCP_OPT_MSG_TYPE        53
+#define DHCP_OPT_SERVER_ID       54
+#define DHCP_OPT_PARAM_REQ_LIST  55
+#define DHCP_OPT_END             255
+
+// DHCP message structure (simplified for basic fields)
+struct dhcp_packet {
+    uint8_t op;      // Message op code / message type. 1 = BOOTREQUEST, 2 = BOOTREPLY
+    uint8_t htype;   // Hardware address type. 1 = Ethernet (10Mb)
+    uint8_t hlen;    // Hardware address length. 6 for Ethernet
+    uint8_t hops;    // Client sets to zero, optionally used by relay agents
+    uint32_t xid;    // Transaction ID
+    uint16_t secs;   // Seconds since beginning of client's first attempt to acquire or renew a lease
+    uint16_t flags;  // Flags; (e.g. Broadcast flag)
+    uint32_t ciaddr; // Client IP address (if already bound)
+    uint32_t yiaddr; // 'your' (client) IP address
+    uint32_t siaddr; // Server IP address
+    uint32_t giaddr; // Gateway IP address
+    uint8_t chaddr[16]; // Client hardware address
+    uint8_t sname[64];  // Server host name (optional)
+    uint8_t file[128];  // Boot file name (optional)
+    uint32_t magic_cookie; // DHCP magic cookie (0x63825363)
+    uint8_t options[0]; // Variable-length options field
+} __attribute__((packed));
+
+// DHCP Client states
+enum dhcp_state {
+    DHCP_INIT,
+    DHCP_SELECTING,
+    DHCP_REQUESTING,
+    DHCP_BOUND,
+    DHCP_ERROR
+};
+
+// Function prototypes
+void net_dhcp_start(void);
+void net_dhcp_stop(void);
+void net_dhcp_handler(uint32_t src_ip, uint16_t src_port, const uint8_t *data, uint32_t len);

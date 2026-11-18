@@ -81,6 +81,57 @@ static uint32_t mk_udp(uint8_t *f, uint32_t src, uint32_t dst, uint16_t sp, uint
     return mk_ip(f, src, dst, 17, seg, 8 + n);
 }
 
+
+static uint32_t mk_dhcp_discover(uint8_t *pkt, const uint8_t *client_mac, uint32_t xid) {
+    memset(pkt, 0, 548); // DHCP minimum packet size
+    struct dhcp_packet *dhcp = (struct dhcp_packet *)pkt;
+
+    dhcp->op = 1;      // BOOTREQUEST
+    dhcp->htype = 1;   // Ethernet
+    dhcp->hlen = 6;    // MAC address length
+    dhcp->hops = 0;
+    dhcp->xid = xid;
+    dhcp->secs = 0;
+    wr16((uint8_t*)&dhcp->flags, 0x8000); // Broadcast flag
+    dhcp->ciaddr = 0;
+    dhcp->yiaddr = 0;
+    dhcp->siaddr = 0;
+    dhcp->giaddr = 0;
+    memcpy(dhcp->chaddr, client_mac, 6);
+    dhcp->magic_cookie = DHCP_MAGIC_COOKIE;
+
+    uint8_t *options = dhcp->options;
+    uint32_t i = 0;
+
+    options[i++] = DHCP_OPT_MSG_TYPE;
+    options[i++] = 1;
+    options[i++] = DHCP_DISCOVER;
+
+    options[i++] = DHCP_OPT_PARAM_REQ_LIST;
+    options[i++] = 4; // Length
+    options[i++] = DHCP_OPT_SUBNET_MASK;
+    options[i++] = DHCP_OPT_ROUTER;
+    options[i++] = DHCP_OPT_DNS_SERVER;
+    options[i++] = DHCP_OPT_LEASE_TIME;
+
+    options[i++] = DHCP_OPT_END;
+
+    return (uint32_t)(sizeof(struct dhcp_packet) + i);
+}
+static uint32_t mk_dhcp_offer(uint8_t *pkt, uint32_t xid, uint32_t offered_ip) {
+    memset(pkt, 0, 548);
+    struct dhcp_packet *dhcp = (struct dhcp_packet *)pkt;
+    dhcp->op = 2; dhcp->htype = 1; dhcp->hlen = 6;
+    dhcp->xid = xid;
+    w32((uint8_t*)&dhcp->yiaddr, offered_ip);
+    w32((uint8_t*)&dhcp->magic_cookie, DHCP_MAGIC_COOKIE);
+    uint8_t *opt = dhcp->options;
+    *opt++ = 53; *opt++ = 1; *opt++ = DHCP_OFFER;
+    *opt++ = 54; *opt++ = 4; w32(opt, IP4(10, 0, 2, 2)); opt += 4;
+    *opt++ = 255;
+    return (uint32_t)(opt - pkt);
+}
+
 int main(void) {
     uint8_t f[1600];
     uint32_t n;
@@ -242,6 +293,9 @@ int main(void) {
         if (!parse_ip(badip[i], &v)) FAIL("adresse invalide acceptee : '%s'", badip[i]);
     printf("parse_ip: ok\n");
 
+    uint8_t dhcp_pkt[548];
+    uint32_t dhcp_len = mk_dhcp_offer(dhcp_pkt, 0x12345678, IP4(10, 0, 2, 20));
+    sl[6] = mk_udp(seeds[6], net_gw, net_ip, DHCP_SERVER_PORT, DHCP_CLIENT_PORT, dhcp_pkt, dhcp_len, 1);
     /* --- fuzz : trames aleatoires et mutations de trames valides --- */
     srand(99);
     uint8_t seeds[6][1600]; uint32_t sl[6];
@@ -251,9 +305,14 @@ int main(void) {
     sl[3] = mk_udp(seeds[3], net_dns, net_ip, 53, 5353, resp, (uint32_t)o, 1);
     sl[4] = mk_echo(seeds[4], PEER, 0xFFFFFFFF, 1, 1, 8);
     sl[5] = mk_arp(seeds[5], 2, PEER, net_ip, (uint8_t *)OUR_MAC);
+    // Add DHCP Discover seed for fuzzing
+    uint32_t dhcp_test_xid = 0x87654321; // Unique XID for fuzzing
+    uint8_t dhcp_discover_payload[548];
+    uint32_t dhcp_discover_payload_len = mk_dhcp_discover(dhcp_discover_payload, OUR_MAC, dhcp_test_xid);
+    sl[6] = mk_udp(seeds[6], 0, 0xFFFFFFFF, DHCP_CLIENT_PORT, DHCP_SERVER_PORT, dhcp_discover_payload, dhcp_discover_payload_len, 1);
     udp_bind(5353, on_udp);
     for (int i = 0; i < 400000; i++) {
-        int s = rand() % 6;
+        int s = rand() % 7;
         uint8_t g[1800];
         uint32_t len;
         if (i % 4 == 0) {                                       /* aleatoire pur */

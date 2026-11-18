@@ -11,6 +11,15 @@ uint32_t net_mask = IP4(255, 255, 255, 0);
 uint32_t net_gw   = IP4(10, 0, 2, 2);
 uint32_t net_dns  = IP4(10, 0, 2, 3);
 
+static enum dhcp_state dhcp_current_state = DHCP_INIT;
+static uint32_t dhcp_xid = 0;
+static uint32_t dhcp_server_ip = 0;
+static uint32_t dhcp_offer_ip = 0;
+static uint32_t dhcp_lease_time = 0;
+static uint32_t dhcp_timer = 0;
+
+#define DHCP_MAGIC_COOKIE 0x63825363
+
 static const uint8_t BCAST[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] << 8 | p[1]); }
@@ -209,8 +218,67 @@ int net_send_udp(uint32_t dst, uint16_t sport, uint16_t dport, const uint8_t *da
     return net_send_ip(dst, 17, seg, 8 + len);
 }
 
+static int net_dhcp_send(uint8_t type, uint32_t server_ip, uint32_t requested_ip) {
+    uint8_t pkt[548];
+    struct dhcp_packet *dhcp = (struct dhcp_packet *)pkt;
+    memset(pkt, 0, sizeof(pkt));
+    dhcp->op = 1; dhcp->htype = 1; dhcp->hlen = 6;
+    dhcp->xid = dhcp_xid;
+    wr16((uint8_t*)&dhcp->flags, 0x8000); // Broadcast
+    memcpy(dhcp->chaddr, net_mac, 6);
+    wr32((uint8_t*)&dhcp->magic_cookie, DHCP_MAGIC_COOKIE);
+    uint8_t *opt = dhcp->options;
+    *opt++ = 53; *opt++ = 1; *opt++ = type;
+    if (requested_ip) {
+        *opt++ = 50; *opt++ = 4; wr32(opt, requested_ip); opt += 4;
+    }
+    if (server_ip) {
+        *opt++ = 54; *opt++ = 4; wr32(opt, server_ip); opt += 4;
+    }
+    *opt++ = 55; *opt++ = 4; *opt++ = 1; *opt++ = 3; *opt++ = 6; *opt++ = 51;
+    *opt++ = 255;
+    return net_send_udp(0xFFFFFFFF, DHCP_CLIENT_PORT, DHCP_SERVER_PORT, pkt, (uint32_t)(opt - pkt));
+}
+
+void net_dhcp_handler(uint32_t src, uint16_t sport, const uint8_t *d, uint32_t n) {
+    if (n < sizeof(struct dhcp_packet)) return;
+    struct dhcp_packet *pkt = (struct dhcp_packet *)d;
+    if (pkt->xid != dhcp_xid) return;
+    uint8_t type = 0;
+    uint32_t mask = 0, gw = 0, dns = 0, lease = 0, sid = 0;
+    const uint8_t *opt = pkt->options;
+    while (opt < d + n && *opt != 255) {
+        uint8_t code = *opt++, len = *opt++;
+        if (opt + len > d + n) break;
+        if (code == 53) type = *opt;
+        else if (code == 1) mask = rd32(opt);
+        else if (code == 3) gw = rd32(opt);
+        else if (code == 6) dns = rd32(opt);
+        else if (code == 51) lease = rd32(opt);
+        else if (code == 54) sid = rd32(opt);
+        opt += len;
+    }
+    if (type == DHCP_OFFER && dhcp_current_state == DHCP_SELECTING) {
+        dhcp_offer_ip = pkt->yiaddr; dhcp_server_ip = sid;
+        dhcp_current_state = DHCP_REQUESTING;
+        net_dhcp_send(DHCP_REQUEST, sid, pkt->yiaddr);
+    } else if (type == DHCP_ACK && dhcp_current_state == DHCP_REQUESTING) {
+        net_ip = pkt->yiaddr; if (mask) net_mask = mask; if (gw) net_gw = gw; if (dns) net_dns = dns;
+        dhcp_lease_time = lease; dhcp_current_state = DHCP_BOUND;
+    }
+}
+
+void net_dhcp_start(void) {
+    dhcp_xid = (uint32_t)rand(); // Initialize with random XID
+    dhcp_xid = (uint32_t)rand();
+    dhcp_current_state = DHCP_SELECTING;
+    udp_bind(DHCP_CLIENT_PORT, net_dhcp_handler);
+    net_dhcp_send(DHCP_DISCOVER, 0, 0);
+}
+}
+
 static void udp_rx(uint32_t src, uint32_t dst, int unicast, const uint8_t *d, uint32_t n) {
-    if (n < 8 || !unicast) return;
+    if (n < 8 || !unicast && rd16(d + 2) != DHCP_CLIENT_PORT) return;
     uint32_t ulen = rd16(d + 4);
     if (ulen < 8 || ulen > n) return;
     if (rd16(d + 6)) {                              /* somme de controle facultative en IPv4 */
