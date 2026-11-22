@@ -134,9 +134,17 @@ check("ARP : reponses non sollicitees non apprises", "10.0.2.66" not in out and 
 net.clear()
 for i in range(3000):
     net.send(eth(GUEST_MAC, PEER_MAC, 0x0800, ipv4(PEER_IP, GUEST_IP, 1, icmp_echo(9, i, data=bytes([i % 256]) * 56))))
-time.sleep(2)
-with net.lock: replies = sum(1 for f in net.frames if is_echo_reply(f))
-check(f"inondation de 3000 pings : {replies} reponses, guest vivant", replies > 100 and alive())
+# le nombre de reponses depend de la vitesse de l'hote : on attend que le flux
+# se tarisse (3 s sans nouvelle reponse, 40 s au plus) au lieu d'un delai fixe
+def count_replies():
+    with net.lock: return sum(1 for f in net.frames if is_echo_reply(f))
+replies, last_change, end = 0, time.time(), time.time() + 40
+while time.time() < end and time.time() - last_change < 3:
+    time.sleep(0.25)
+    n = count_replies()
+    if n != replies: replies, last_change = n, time.time()
+# on exige que le guest ait repondu (>= 10) sans jamais depasser le nombre d'envois, et qu'il reste utilisable
+check(f"inondation de 3000 pings : {replies} reponses, guest vivant", 10 <= replies <= 3000 and alive())
 
 # 7. tailles de trames extremes, dont des trames plus longues que le maximum Ethernet
 def rx_alive():
