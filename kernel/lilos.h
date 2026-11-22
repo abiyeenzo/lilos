@@ -213,6 +213,14 @@ int      net_ping(uint32_t ip, uint32_t timeout_ms, uint32_t *rtt_ms);
 int      net_resolve(const char *name, uint32_t *ip);
 int      parse_ip(const char *s, uint32_t *ip);
 
+/* --- sha512.c, ed25519.c --- */
+struct sha512 { uint64_t h[8]; uint8_t buf[128]; uint32_t n; uint64_t total; };
+void sha512_init(struct sha512 *s);
+void sha512_update(struct sha512 *s, const void *data, uint32_t len);
+void sha512_final(struct sha512 *s, uint8_t out[64]);
+void sha512(const void *data, uint32_t len, uint8_t out[64]);
+int  ed25519_verify(const uint8_t sig[64], const void *msg, uint32_t len, const uint8_t pk[32]);
+
 /* --- sha256.c, users.c --- */
 void     sha256(const void *data, uint32_t len, uint8_t out[32]);
 int      users_valid_password(const char *pw);

@@ -25,7 +25,7 @@ OBJS  := $(BUILD)/entry.o $(patsubst kernel/%.c,$(BUILD)/%.o,$(C_SRC)) $(USER_OB
 QEMU      := qemu-system-i386
 QEMU_DISK := -drive format=raw,file=$(BUILD)/lilos.img -nic user,model=rtl8139
 
-.PHONY: all run run-serial test-heap test-lib test-fs test-sha test-net test-attack test-netattack fuzz-shell test clean
+.PHONY: all run run-serial test-heap test-lib test-fs test-sha test-ed25519 test-net test-attack test-netattack fuzz-shell test clean
 
 all: $(BUILD)/lilos.img
 
@@ -93,6 +93,11 @@ test-fs: | $(BUILD)
 test-sha: | $(BUILD)
 	gcc -O1 -g -w -Ikernel -fsanitize=address,undefined tests/sha_test.c kernel/sha256.c kernel/string.c -o $(BUILD)/sha_test
 	$(BUILD)/sha_test
+
+test-ed25519: | $(BUILD)
+	python3 tests/gen_ed25519.py > $(BUILD)/ed25519.vec
+	gcc -O2 -g -w -Ikernel -fsanitize=address,undefined tests/ed25519_test.c kernel/ed25519.c kernel/sha512.c kernel/string.c -o $(BUILD)/ed25519_test
+	$(BUILD)/ed25519_test $(BUILD)/ed25519.vec
 
 test-net: | $(BUILD)
 	gcc -O1 -g -w -Ikernel -fsanitize=address,undefined tests/net_fuzz.c kernel/net.c kernel/string.c -o $(BUILD)/net_fuzz
