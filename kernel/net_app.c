@@ -83,3 +83,68 @@ int net_resolve(const char *name, uint32_t *ip) {
     }
     return -1;
 }
+
+/* --- DHCP --- */
+
+static struct { volatile int got; uint32_t xid; uint8_t type; struct dhcp_lease l; } dhcp;
+
+static void dhcp_rx(uint32_t src, uint16_t sport, const uint8_t *d, uint32_t n) {
+    (void)src;
+    if (sport != 67 || dhcp.got) return;
+    uint8_t type;
+    struct dhcp_lease l;
+    if (dhcp_parse(d, n, dhcp.xid, &type, &l)) return;
+    dhcp.type = type;
+    dhcp.l = l;
+    dhcp.got = 1;
+}
+
+/* Envoie msg puis attend une reponse du type voulu (ou un NAK) pendant ~2 s.
+ * Retourne le type recu, ou 0 au delai. */
+static int dhcp_exchange(uint8_t msg, uint8_t want, uint32_t req_ip, uint32_t server) {
+    uint8_t pkt[300];
+    int len = dhcp_build(pkt, sizeof(pkt), msg, dhcp.xid, req_ip, server);
+    if (len < 0) return 0;
+    dhcp.got = 0;
+    net_send_udp(0xFFFFFFFF, 68, 67, pkt, (uint32_t)len);
+    uint32_t t0 = timer_ticks();
+    while ((uint32_t)(timer_ticks() - t0) < TIMER_HZ * 2) {
+        net_poll();
+        if (dhcp.got) {
+            if (dhcp.type == want || dhcp.type == DHCP_NAK) return dhcp.type;
+            dhcp.got = 0;
+        }
+        __asm__ volatile ("hlt");
+    }
+    return 0;
+}
+
+/* Obtient une configuration par DHCP : 0 si appliquee, -1 echec, -2 pas de carte, -4 port occupe.
+ * Pendant l'echange l'adresse est 0.0.0.0 ; l'ancienne configuration est restauree en cas d'echec.
+ * Pas de renouvellement du bail : relancer la commande avant son expiration. */
+int net_dhcp(uint32_t *lease_secs) {
+    if (!nic_present()) return -2;
+    uint32_t old_ip = net_ip, old_mask = net_mask;
+    if (udp_bind(68, dhcp_rx)) return -4;
+    net_ip = 0; net_mask = 0;
+
+    int ok = 0;
+    struct dhcp_lease offer = {0};
+    for (int attempt = 0; attempt < 3 && !ok; attempt++) {
+        dhcp.xid = entropy();
+        if (dhcp_exchange(DHCP_DISCOVER, DHCP_OFFER, 0, 0) != DHCP_OFFER) continue;
+        offer = dhcp.l;
+        if (dhcp_exchange(DHCP_REQUEST, DHCP_ACK, offer.ip, offer.server) != DHCP_ACK) continue;
+        /* l'ACK doit confirmer l'offre : meme adresse, meme serveur */
+        if (dhcp.l.ip != offer.ip || dhcp.l.server != offer.server) continue;
+        offer = dhcp.l;
+        ok = 1;
+    }
+    udp_unbind(68);
+    if (!ok) { net_ip = old_ip; net_mask = old_mask; return -1; }
+
+    net_ip = offer.ip; net_mask = offer.mask; net_gw = offer.gw;
+    if (offer.dns) net_dns = offer.dns;
+    if (lease_secs) *lease_secs = offer.lease;
+    return 0;
+}

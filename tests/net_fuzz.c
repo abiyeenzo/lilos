@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 /* Fuzz hote de la pile reseau : paquets valides, mutes et aleatoires.
  * Verifie les reponses attendues, l'absence de reponse aux paquets invalides,
  * et qu'aucune lecture hors limites n'a lieu (ASan). */
@@ -79,6 +80,32 @@ static uint32_t mk_udp(uint8_t *f, uint32_t src, uint32_t dst, uint16_t sp, uint
     uint16_t c = csum(buf, 12 + 8 + n);
     w16(seg + 6, good_csum ? (c ? c : 0xFFFF) : (uint16_t)(c ^ 0x1234));
     return mk_ip(f, src, dst, 17, seg, 8 + n);
+}
+
+
+/* reponse DHCP du serveur (offre ou ACK) */
+static uint32_t mk_dhcp_reply(uint8_t *b, uint8_t type, uint32_t xid, uint32_t yi) {
+    memset(b, 0, 240);
+    b[0] = 2; b[1] = 1; b[2] = 6; w32(b + 4, xid); w32(b + 16, yi);
+    memcpy(b + 28, OUR_MAC, 6); w32(b + 236, 0x63825363);
+    uint8_t *o = b + 240;
+    *o++ = 53; *o++ = 1; *o++ = type;
+    *o++ = 54; *o++ = 4; w32(o, PEER); o += 4;
+    *o++ = 1;  *o++ = 4; w32(o, IP4(255, 255, 255, 0)); o += 4;
+    *o++ = 3;  *o++ = 4; w32(o, PEER); o += 4;
+    *o++ = 6;  *o++ = 4; w32(o, IP4(10, 0, 2, 3)); o += 4;
+    *o++ = 51; *o++ = 4; w32(o, 86400); o += 4;
+    *o++ = 255;
+    return (uint32_t)(o - b);
+}
+
+static uint32_t dhcp_xid_seen;
+static int dhcp_rx_ok;
+static void on_dhcp(uint32_t src, uint16_t sport, const uint8_t *d, uint32_t n) {
+    uint8_t t; struct dhcp_lease l;
+    (void)src; (void)sport;
+    if (!dhcp_parse(d, n, 0x12345678, &t, &l)) dhcp_rx_ok++;
+    dhcp_xid_seen++;
 }
 
 int main(void) {
@@ -242,18 +269,73 @@ int main(void) {
         if (!parse_ip(badip[i], &v)) FAIL("adresse invalide acceptee : '%s'", badip[i]);
     printf("parse_ip: ok\n");
 
+    /* --- DHCP : construction, analyse stricte, rejets --- */
+    {
+        uint8_t b[600], t; struct dhcp_lease l;
+        int n = dhcp_build(b, sizeof b, DHCP_DISCOVER, 0xCAFEBABE, 0, 0);
+        if (n < 244 || b[0] != 1 || rd16(b + 10) != 0x8000 || memcmp(b + 28, OUR_MAC, 6) || b[236] != 0x63 || b[240] != 53 || b[242] != DHCP_DISCOVER)
+            FAIL("dhcp_build : DISCOVER invalide");
+        if (dhcp_build(b, 100, DHCP_DISCOVER, 1, 0, 0) >= 0) FAIL("dhcp_build : tampon trop petit accepte");
+        n = dhcp_build(b, sizeof b, DHCP_REQUEST, 7, IP4(10, 0, 2, 20), PEER);
+        if (n < 0 || memmem(b + 240, (size_t)n - 240, "\x32\x04\x0a\x00\x02\x14", 6) == NULL) FAIL("dhcp_build : REQUEST sans adresse demandee");
+
+        uint32_t rl = mk_dhcp_reply(b, DHCP_OFFER, 0x12345678, IP4(10, 0, 2, 20));
+        if (dhcp_parse(b, rl, 0x12345678, &t, &l) || t != DHCP_OFFER || l.ip != IP4(10, 0, 2, 20) ||
+            l.mask != IP4(255, 255, 255, 0) || l.gw != PEER || l.dns != IP4(10, 0, 2, 3) || l.server != PEER || l.lease != 86400)
+            FAIL("dhcp_parse : offre valide refusee ou mal lue");
+        mk_dhcp_reply(b, DHCP_ACK, 0x12345678, IP4(10, 0, 2, 20));
+        if (dhcp_parse(b, rl, 0x12345678, &t, &l) || t != DHCP_ACK) FAIL("dhcp_parse : ACK");
+
+        uint8_t m[600];
+        #define REJECT(what, stmt) do { memcpy(m, b, rl); stmt; if (!dhcp_parse(m, mlen, 0x12345678, &t, &l)) FAIL("dhcp_parse accepte : %s", what); } while (0)
+        uint32_t mlen = rl;
+        REJECT("mauvais xid", w32(m + 4, 1));
+        REJECT("op requete", m[0] = 1);
+        REJECT("mauvaise MAC", m[28] ^= 1);
+        REJECT("mauvais cookie", m[236] ^= 1);
+        REJECT("adresse nulle", w32(m + 16, 0));
+        REJECT("adresse multicast", w32(m + 16, IP4(224, 0, 0, 1)));
+        REJECT("masque non contigu", w32(m + 240 + 3 + 6 + 2, IP4(255, 0, 255, 0)));
+        REJECT("option 53 de longueur 2", m[241] = 2);
+        REJECT("option 1 de longueur 3", m[240 + 3 + 6 + 1] = 3);
+        REJECT("type DHCP inconnu", m[242] = 9);
+        REJECT("option tronquee", mlen = rl - 5);
+        mlen = 243;
+        REJECT("trop court", (void)0);
+        mlen = rl;
+        memcpy(m, b, rl); m[240 + 3 + 6 + 6 + 1] = 40;      /* longueur d'option qui depasse le paquet */
+        if (!dhcp_parse(m, mlen, 0x12345678, &t, &l)) FAIL("dhcp_parse accepte : longueur d'option hors paquet");
+        /* routeur hors du sous-reseau : ignore mais paquet accepte */
+        memcpy(m, b, rl); w32(m + 240 + 3 + 6 + 6 + 2, IP4(192, 168, 9, 9));
+        if (dhcp_parse(m, mlen, 0x12345678, &t, &l) || l.gw != 0) FAIL("dhcp_parse : routeur hors sous-reseau");
+        printf("dhcp: ok\n");
+    }
+
     /* --- fuzz : trames aleatoires et mutations de trames valides --- */
     srand(99);
-    uint8_t seeds[6][1600]; uint32_t sl[6];
+    uint8_t seeds[8][1600]; uint32_t sl[8];
     sl[0] = mk_arp(seeds[0], 1, PEER, net_ip, BC);
     sl[1] = mk_echo(seeds[1], PEER, net_ip, 1, 1, 64);
     sl[2] = mk_udp(seeds[2], PEER, net_ip, 53, 5353, body, 100, 1);
     sl[3] = mk_udp(seeds[3], net_dns, net_ip, 53, 5353, resp, (uint32_t)o, 1);
     sl[4] = mk_echo(seeds[4], PEER, 0xFFFFFFFF, 1, 1, 8);
     sl[5] = mk_arp(seeds[5], 2, PEER, net_ip, (uint8_t *)OUR_MAC);
+    uint8_t dh[600];
+    uint32_t dl = mk_dhcp_reply(dh, DHCP_OFFER, 0x12345678, IP4(10, 0, 2, 20));
+    sl[6] = mk_udp(seeds[6], PEER, 0xFFFFFFFF, 67, 68, dh, dl, 1);
+    sl[7] = mk_udp(seeds[7], PEER, net_ip, 67, 68, dh, dl, 1);
     udp_bind(5353, on_udp);
+    udp_bind(68, on_dhcp);
+    nsent = 0; dhcp_rx_ok = 0;
+    net_rx(seeds[6], sl[6]);
+    if (dhcp_rx_ok != 1) FAIL("offre DHCP en diffusion non remise au gestionnaire (%d)", dhcp_rx_ok);
+    {   /* la diffusion vers un autre port reste ignoree */
+        uint8_t o2[1600]; uint32_t l2 = mk_udp(o2, PEER, 0xFFFFFFFF, 67, 5353, dh, dl, 1);
+        int before = udp_hits; net_rx(o2, l2);
+        if (udp_hits != before) FAIL("diffusion UDP hors port 68 acceptee");
+    }
     for (int i = 0; i < 400000; i++) {
-        int s = rand() % 6;
+        int s = rand() % 8;
         uint8_t g[1800];
         uint32_t len;
         if (i % 4 == 0) {                                       /* aleatoire pur */
@@ -279,6 +361,11 @@ int main(void) {
             if (sent_len[k] >= 34 && rd16(sent[k] + 12) == 0x0800 && csum(sent[k] + 14, 20) != 0) FAIL("trame emise avec somme IP fausse");
         }
         uint32_t d;
+        {
+            uint8_t ty; struct dhcp_lease dl2;
+            dhcp_parse(g, len, 0x12345678, &ty, &dl2);
+            if (len > 42) dhcp_parse(g + 42, len - 42, 0x12345678, &ty, &dl2);
+        }
         dns_parse_response(g, len, (uint16_t)rand(), &d);
         dns_parse_response(g + 42 < g + len ? g + 42 : g, len > 42 ? len - 42 : 0, 0x1111, &d);
     }
