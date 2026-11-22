@@ -210,7 +210,8 @@ int net_send_udp(uint32_t dst, uint16_t sport, uint16_t dport, const uint8_t *da
 }
 
 static void udp_rx(uint32_t src, uint32_t dst, int unicast, const uint8_t *d, uint32_t n) {
-    if (n < 8 || !unicast) return;
+    if (n < 8) return;
+    if (!unicast && rd16(d + 2) != 68) return;      /* diffusion : seulement le port client DHCP */
     uint32_t ulen = rd16(d + 4);
     if (ulen < 8 || ulen > n) return;
     if (rd16(d + 6)) {                              /* somme de controle facultative en IPv4 */
@@ -258,6 +259,72 @@ void net_rx(const uint8_t *f, uint32_t len) {
     uint16_t type = rd16(f + 12);
     if (type == 0x0806) arp_rx(f + 14, len - 14);
     else if (type == 0x0800) ip_rx(f + 14, len - 14);
+}
+
+/* --- DHCP (client) --- */
+
+#define DHCP_FIXED 240      /* en-tete BOOTP + cookie */
+
+/* Construit un DISCOVER ou un REQUEST (diffusion). Retourne la taille. */
+int dhcp_build(uint8_t *out, uint32_t max, uint8_t type, uint32_t xid, uint32_t req_ip, uint32_t server) {
+    if (max < DHCP_FIXED + 32) return -1;
+    memset(out, 0, DHCP_FIXED);
+    out[0] = 1; out[1] = 1; out[2] = 6;             /* BOOTREQUEST, Ethernet, MAC de 6 octets */
+    wr32(out + 4, xid);
+    wr16(out + 10, 0x8000);                         /* reponse en diffusion : on n'a pas encore d'adresse */
+    memcpy(out + 28, net_mac, 6);
+    wr32(out + 236, 0x63825363);
+    uint8_t *o = out + DHCP_FIXED;
+    *o++ = 53; *o++ = 1; *o++ = type;
+    if (req_ip) { *o++ = 50; *o++ = 4; wr32(o, req_ip); o += 4; }
+    if (server) { *o++ = 54; *o++ = 4; wr32(o, server); o += 4; }
+    *o++ = 55; *o++ = 3; *o++ = 1; *o++ = 3; *o++ = 6;      /* masque, routeur, DNS */
+    *o++ = 255;
+    return (int)(o - out);
+}
+
+static int mask_ok(uint32_t m) { return m != 0 && ((~m + 1) & ~m) == 0; }   /* bits a 1 contigus */
+
+/* Analyse une reponse du serveur. Retourne 0 si elle nous est destinee et valide :
+ * type DHCP et bail remplis. Toute option mal formee fait rejeter le paquet. */
+int dhcp_parse(const uint8_t *d, uint32_t n, uint32_t xid, uint8_t *type, struct dhcp_lease *l) {
+    if (n < DHCP_FIXED + 3) return -1;
+    if (d[0] != 2 || d[1] != 1 || d[2] != 6) return -1;
+    if (rd32(d + 4) != xid) return -1;
+    if (memcmp(d + 28, net_mac, 6)) return -1;
+    if (rd32(d + 236) != 0x63825363) return -1;
+
+    uint8_t t = 0;
+    struct dhcp_lease r = { rd32(d + 16), 0, 0, 0, 0, 0 };
+    uint32_t i = DHCP_FIXED;
+    while (i < n) {
+        uint8_t code = d[i++];
+        if (code == 0) continue;                    /* remplissage */
+        if (code == 255) break;
+        if (i >= n) return -1;
+        uint32_t len = d[i++];
+        if (len > n - i) return -1;
+        const uint8_t *v = d + i;
+        switch (code) {
+        case 53: if (len != 1) return -1; t = v[0]; break;
+        case 1:  if (len != 4) return -1; r.mask = rd32(v); break;
+        case 3:  if (len < 4 || len % 4) return -1; r.gw = rd32(v); break;      /* premier routeur */
+        case 6:  if (len < 4 || len % 4) return -1; r.dns = rd32(v); break;     /* premier serveur */
+        case 51: if (len != 4) return -1; r.lease = rd32(v); break;
+        case 54: if (len != 4) return -1; r.server = rd32(v); break;
+        }
+        i += len;
+    }
+    if (t != DHCP_OFFER && t != DHCP_ACK && t != DHCP_NAK) return -1;
+    if (t != DHCP_NAK) {
+        if (r.ip == 0 || r.ip >= 0xE0000000u || r.server == 0 || r.server >= 0xE0000000u) return -1;
+        if (!mask_ok(r.mask)) return -1;
+        if (r.gw && (r.gw >= 0xE0000000u || ((r.gw ^ r.ip) & r.mask))) r.gw = 0;   /* routeur hors du sous-reseau : ignore */
+        if (r.dns >= 0xE0000000u) r.dns = 0;
+    }
+    *type = t;
+    *l = r;
+    return 0;
 }
 
 /* --- DNS (client) --- */

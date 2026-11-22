@@ -198,6 +198,16 @@ int      net_icmp_echo(uint32_t dst, uint16_t id, uint16_t seq);
 void     ping_expect(uint32_t dst, uint16_t id, uint16_t seq);
 int      ping_received(void);
 int      dns_build_query(const char *name, uint16_t id, uint8_t *out, uint32_t max);
+
+#define DHCP_DISCOVER 1
+#define DHCP_OFFER    2
+#define DHCP_REQUEST  3
+#define DHCP_ACK      5
+#define DHCP_NAK      6
+struct dhcp_lease { uint32_t ip, mask, gw, dns, server, lease; };
+int      dhcp_build(uint8_t *out, uint32_t max, uint8_t type, uint32_t xid, uint32_t req_ip, uint32_t server);
+int      dhcp_parse(const uint8_t *d, uint32_t n, uint32_t xid, uint8_t *type, struct dhcp_lease *l);
+int      net_dhcp(uint32_t *lease_secs);
 int      dns_parse_response(const uint8_t *d, uint32_t n, uint16_t id, uint32_t *ip);
 int      net_ping(uint32_t ip, uint32_t timeout_ms, uint32_t *rtt_ms);
 int      net_resolve(const char *name, uint32_t *ip);
