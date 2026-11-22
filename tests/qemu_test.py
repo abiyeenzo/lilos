@@ -271,6 +271,32 @@ check(vm, "reseau config 10.0.2.20 10.0.2.2 10.0.2.3", r"permission refusée")
 check(vm, "ping 10.0.2.2", r"réponse de 10\.0\.2\.2", 30)      # mais peuvent pinguer
 vm.close()
 
+# verification de signature Ed25519 par le noyau : paire de cles jetable generee par openssl
+import shutil, subprocess, tempfile
+if shutil.which("openssl"):
+    with tempfile.TemporaryDirectory() as td:
+        key, msg, sigf = (os.path.join(td, n) for n in ("k.pem", "m", "m.sig"))
+        subprocess.run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", key], check=True, capture_output=True)
+        open(msg, "wb").write(b"bonjour\n")                 # ce que produit "write m bonjour"
+        subprocess.run(["openssl", "pkeyutl", "-sign", "-rawin", "-inkey", key, "-in", msg, "-out", sigf], check=True, capture_output=True)
+        pub = subprocess.run(["openssl", "pkey", "-in", key, "-pubout", "-outform", "DER"], check=True, capture_output=True).stdout[-32:]
+        sig = open(sigf, "rb").read().hex()
+        bad = sig[:-1] + ("1" if sig[-1] == "0" else "0")
+    vm = boot()
+    check(vm, "write m bonjour", vmmod.PROMPT)
+    check(vm, "write sig " + sig[:64], vmmod.PROMPT, 15)
+    check(vm, "append sig " + sig[64:], vmmod.PROMPT, 15)
+    check(vm, "write mauvaise " + bad[:64], vmmod.PROMPT, 15)
+    check(vm, "append mauvaise " + bad[64:], vmmod.PROMPT, 15)
+    check(vm, "write cle " + pub.hex(), vmmod.PROMPT, 15)
+    check(vm, "verifier m sig cle", r"signature valide \(\d+ ms\), clé fournie", 30)
+    check(vm, "verifier m mauvaise cle", r"signature INVALIDE", 30)
+    check(vm, "verifier m sig", r"signature INVALIDE", 30)             # la cle de release n'a pas signe ce fichier
+    check(vm, "verifier m cle", r"64 octets bruts ou 128 chiffres hexadécimaux attendus")
+    check(vm, "verifier absent sig cle", r"erreur : fichier introuvable")
+    check(vm, "verifier m", r"usage : verifier")
+    vm.close()
+
 if failures:
     print(f"{len(failures)} test(s) en echec")
     sys.exit(1)

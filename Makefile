@@ -95,6 +95,7 @@ test-sha: | $(BUILD)
 	$(BUILD)/sha_test
 
 test-ed25519: | $(BUILD)
+	sh tests/gen_release_key.sh | diff -u kernel/release_key.h - || { echo "kernel/release_key.h ne correspond pas a release/lilos-release.pub.pem : sh tests/gen_release_key.sh > kernel/release_key.h"; exit 1; }
 	python3 tests/gen_ed25519.py > $(BUILD)/ed25519.vec
 	gcc -O2 -g -w -Ikernel -fsanitize=address,undefined tests/ed25519_test.c kernel/ed25519.c kernel/sha512.c kernel/string.c -o $(BUILD)/ed25519_test
 	$(BUILD)/ed25519_test $(BUILD)/ed25519.vec

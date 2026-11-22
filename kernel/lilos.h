@@ -220,6 +220,8 @@ void sha512_update(struct sha512 *s, const void *data, uint32_t len);
 void sha512_final(struct sha512 *s, uint8_t out[64]);
 void sha512(const void *data, uint32_t len, uint8_t out[64]);
 int  ed25519_verify(const uint8_t sig[64], const void *msg, uint32_t len, const uint8_t pk[32]);
+int  release_verify(const void *img, uint32_t len, const uint8_t sig[64]);
+const uint8_t *release_pubkey_bytes(void);
 
 /* --- sha256.c, users.c --- */
 void     sha256(const void *data, uint32_t len, uint8_t out[32]);

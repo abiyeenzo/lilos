@@ -565,6 +565,55 @@ static void cmd_cat(int argc, char **argv) {
     if (len && d[len - 1] != '\n') kputc('\n');
 }
 
+static int hex_nibble(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+/* Lit un blob de n octets dans un fichier : soit n octets bruts, soit 2n chiffres
+ * hexadecimaux (les espaces et fins de ligne sont ignores). Retourne 0 si correct. */
+static int read_blob(const char *name, uint8_t *out, uint32_t n) {
+    const uint8_t *d;
+    uint32_t len, nbytes = 0;
+    int r = fs_read(name, &d, &len, UID());
+    if (r) { fs_report(r); return -1; }
+    if (len == n) { memcpy(out, d, n); return 0; }
+    int pending = -1;                               /* premier chiffre d'un octet, en attente du second */
+    for (uint32_t i = 0; i < len; i++) {
+        if (d[i] == ' ' || d[i] == '\n' || d[i] == '\r' || d[i] == '\t') continue;
+        int v = hex_nibble((char)d[i]);
+        if (v < 0 || nbytes >= n) { nbytes = n + 1; break; }
+        if (pending < 0) pending = v;
+        else { out[nbytes++] = (uint8_t)(pending << 4 | v); pending = -1; }
+    }
+    if (nbytes == n && pending < 0) return 0;
+    kprintf("%s : %u octets bruts ou %u chiffres hexadécimaux attendus\n", name, n, 2 * n);
+    return -1;
+}
+
+static void cmd_verify(int argc, char **argv) {
+    const uint8_t *d;
+    uint32_t len;
+    uint8_t sig[64], pk[32];
+    if (argc < 3 || argc > 4) {
+        kputs("usage : verifier <fichier> <fichier signature> [fichier clé publique]\n"
+              "  signature : 64 octets bruts ou 128 chiffres hexa ; clé : 32 octets ou 64 chiffres hexa\n"
+              "  sans clé, la clé de release du projet est utilisée\n");
+        return;
+    }
+    int r = fs_read(argv[1], &d, &len, UID());
+    if (r) { fs_report(r); return; }
+    if (read_blob(argv[2], sig, 64)) return;
+    if (argc == 4 && read_blob(argv[3], pk, 32)) return;
+    uint32_t t0 = timer_ticks();
+    int ok = argc == 4 ? ed25519_verify(sig, d, len, pk) : release_verify(d, len, sig);
+    uint32_t ms = (uint32_t)(timer_ticks() - t0) * (1000 / TIMER_HZ);
+    if (ok) kprintf("signature valide (%u ms), %s\n", ms, argc == 4 ? "clé fournie" : "clé de release");
+    else kprintf("signature INVALIDE (%u ms)\n", ms);
+}
+
 static void mode_str(uint8_t m, char *out) {
     for (int i = 0; i < 2; i++) {
         uint8_t b = (m >> (3 - 3 * i)) & 7;
@@ -704,6 +753,7 @@ static const struct command commands[] = {
     { "ecrire", "write", "écrit un fichier : ecrire <fichier> [texte]", cmd_write, 0 },
     { "ajouter", "append", "ajoute une ligne : ajouter <fichier> <texte>", cmd_append, 0 },
     { "afficher", "cat", "affiche un fichier", cmd_cat, 0 },
+    { "verifier", "verify", "vérifie une signature Ed25519 : verifier <f> <fichier sig> [fichier clé]", cmd_verify, 0 },
     { "copier", "cp", "copie un fichier", cmd_cp, 0 },
     { "supprimer", "rm", "supprime un fichier", cmd_rm, 0 },
     { "calculer", "calc", "calcule : calculer <a> <+ - * / %> <b>", cmd_calc, 0 },
